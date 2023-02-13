@@ -1,0 +1,19 @@
+### ping
+GET http://localhost:8080/ping
+
+### sign up user
+POST http://localhost:8080/sign-up
+
+{"login":"admin","password":"12345"}
+
+
+### sign in user
+POST http://localhost:8080/sign-in
+
+{"login":"admin","password":"12345"}
+
+### get link
+// @no-redirect
+GET http://localhost:8080/lz2wrrov
+
+r
