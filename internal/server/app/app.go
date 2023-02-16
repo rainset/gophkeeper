@@ -4,19 +4,19 @@ package app
 import (
 	"context"
 	"errors"
-	"github.com/rainset/gophkeeper/internal/server/config"
-	"github.com/rainset/gophkeeper/internal/server/handler"
-	"github.com/rainset/gophkeeper/internal/server/service"
-	"github.com/rainset/gophkeeper/internal/server/storage"
-	"github.com/rainset/gophkeeper/internal/server/storage/file"
-	"github.com/rainset/gophkeeper/pkg/logger"
-
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/rainset/gophkeeper/internal/server/config"
+	"github.com/rainset/gophkeeper/internal/server/handler"
+	"github.com/rainset/gophkeeper/internal/server/service"
+	"github.com/rainset/gophkeeper/internal/server/storage"
+	"github.com/rainset/gophkeeper/internal/server/storage/file"
+	"github.com/rainset/gophkeeper/pkg/logger"
 )
 
 type Server struct {

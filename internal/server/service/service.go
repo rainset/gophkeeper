@@ -40,7 +40,12 @@ func (s *Service) CreateSession(userID int) (model.Tokens, error) {
 		err error
 	)
 
-	res.AccessToken, err = s.TokenManager.NewJWT(strconv.Itoa(userID), s.Cfg.JWTAccessTokenTTL)
+	accessTTL, err := time.ParseDuration(s.Cfg.JWTAccessTokenTTL)
+	if err != nil {
+		return res, err
+	}
+
+	res.AccessToken, err = s.TokenManager.NewJWT(strconv.Itoa(userID), accessTTL)
 	if err != nil {
 		return res, err
 	}
@@ -50,7 +55,12 @@ func (s *Service) CreateSession(userID int) (model.Tokens, error) {
 		return res, err
 	}
 
-	err = s.Store.SetRefreshToken(model.RefreshToken{UserID: userID, Token: res.RefreshToken, ExpiredAt: time.Now().Add(s.Cfg.JWTRefreshTokenTTL)})
+	refreshTokenTTL, err := time.ParseDuration(s.Cfg.JWTRefreshTokenTTL)
+	if err != nil {
+		return res, err
+	}
+
+	err = s.Store.SetRefreshToken(model.RefreshToken{UserID: userID, Token: res.RefreshToken, ExpiredAt: time.Now().Add(refreshTokenTTL)})
 
 	return res, err
 }

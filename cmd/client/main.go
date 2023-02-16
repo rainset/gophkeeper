@@ -3,29 +3,36 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
+	"fmt"
+	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/caarlos0/env"
 	"github.com/rainset/gophkeeper/internal/client/app"
 	"github.com/rainset/gophkeeper/internal/client/config"
 	"github.com/rainset/gophkeeper/pkg/logger"
 )
 
+var (
+	// BuildVersion is a build version of client application.
+	BuildVersion = "N/A"
+	// BuildDate is a build date of client application.
+	BuildDate = "N/A"
+	// BuildCommit is a build commit of client application.
+	BuildCommit = "N/A"
+)
+
 func main() {
-	cfg := config.Config{}
-	flag.StringVar(&cfg.ServerAddress, "s", "localhost:8080", "server address")
-	flag.StringVar(&cfg.ServerProtocol, "p", "http", "server protocol (http|https)")
-	flag.StringVar(&cfg.ClientFolder, "d", "gophkeeper_files", "folder for downloaded files")
-	flag.Parse()
 
-	err := env.Parse(&cfg)
+	// print client build version
+	fmt.Printf("Build version: %s\n", BuildVersion)
+	fmt.Printf("Build date: %s\n", BuildDate)
+	fmt.Printf("Build commit: %s\n", BuildCommit)
+
+	cfg, err := config.ReadConfig()
 	if err != nil {
-		logger.Error(err)
-
-		return
+		log.Fatal(err)
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
@@ -40,6 +47,6 @@ func main() {
 		}
 	}
 
-	a := app.New(ctx, &cfg)
+	a := app.New(ctx, cfg)
 	a.Run()
 }

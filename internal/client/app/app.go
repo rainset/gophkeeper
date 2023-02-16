@@ -952,8 +952,6 @@ func (a *App) SyncData() {
 		}
 	}
 
-	logger.Info("tokens ", tokens)
-
 	c.RefreshToken = tokens.RefreshToken
 	c.AccessToken = tokens.AccessToken
 

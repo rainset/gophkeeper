@@ -5,22 +5,20 @@ go 1.19
 require (
 	fyne.io/fyne/v2 v2.3.0
 	github.com/asdine/storm/v3 v3.2.1
-	github.com/caarlos0/env v3.5.0+incompatible
+	github.com/caarlos0/env/v7 v7.0.0
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/georgysavva/scany/v2 v2.0.0
 	github.com/gin-gonic/gin v1.8.2
 	github.com/go-resty/resty/v2 v2.7.0
 	github.com/jackc/pgconn v1.13.0
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa
-	github.com/jackc/pgx/v4 v4.17.2
-	github.com/joho/godotenv v1.4.0
+	github.com/jackc/pgx/v5 v5.2.0
 	github.com/sirupsen/logrus v1.9.0
 )
 
 require (
 	fyne.io/systray v1.10.1-0.20221115204952-d16a6177e6f1 // indirect
 	github.com/benoitkugler/textlayout v0.3.0 // indirect
-	github.com/cavaliergopher/grab/v3 v3.0.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fredbi/uri v0.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.5.4 // indirect
@@ -43,13 +41,11 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgproto3/v2 v2.3.1 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20200714003250-2b9c44734f2b // indirect
-	github.com/jackc/pgtype v1.12.0 // indirect
-	github.com/jackc/pgx/v5 v5.2.0 // indirect
-	github.com/jackc/puddle v1.3.0 // indirect
 	github.com/jackc/puddle/v2 v2.1.2 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/jsummers/gobmp v0.0.0-20151104160322-e2ba15ffa76e // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
+	github.com/lib/pq v1.10.2 // indirect
 	github.com/mattn/go-isatty v0.0.16 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
