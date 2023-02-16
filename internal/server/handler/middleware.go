@@ -2,11 +2,12 @@ package handler
 
 import (
 	"errors"
-	"github.com/gin-gonic/gin"
-	"github.com/rainset/gophkeeper/pkg/logger"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/gin-gonic/gin"
+	"github.com/rainset/gophkeeper/pkg/logger"
 )
 
 func (h *Handler) parseAuthHeader(c *gin.Context) (string, error) {
@@ -28,18 +29,17 @@ func (h *Handler) parseAuthHeader(c *gin.Context) (string, error) {
 }
 
 func (h *Handler) authMiddleware(c *gin.Context) {
-
 	id, err := h.parseAuthHeader(c)
 	if err != nil {
 		logger.Info("authMiddleware:", err)
 		c.AbortWithStatus(http.StatusUnauthorized)
 		return
 	}
+
 	c.Set("user_id", id)
 }
 
 func (h *Handler) getUserIDFromRequest(c *gin.Context) (userID int, err error) {
-
 	ctxUserID, ex := c.Get("user_id")
 
 	if !ex {
@@ -52,5 +52,4 @@ func (h *Handler) getUserIDFromRequest(c *gin.Context) (userID int, err error) {
 	}
 
 	return userID, err
-
 }

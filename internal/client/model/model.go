@@ -13,7 +13,7 @@ type Tokens struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
-type ConfigStorage struct {
+type UserConfig struct {
 	Login        string
 	Password     string
 	AccessToken  string

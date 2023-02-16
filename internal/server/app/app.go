@@ -10,6 +10,7 @@ import (
 	"github.com/rainset/gophkeeper/internal/server/storage"
 	"github.com/rainset/gophkeeper/internal/server/storage/file"
 	"github.com/rainset/gophkeeper/pkg/logger"
+
 	"log"
 	"net/http"
 	"os"
@@ -23,7 +24,6 @@ type Server struct {
 }
 
 func NewServer(cfg *config.Config, handler http.Handler) *Server {
-
 	return &Server{
 		httpServer: &http.Server{
 			Addr:           cfg.ServerAddress,
@@ -41,9 +41,8 @@ func (s *Server) Stop(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
-// Run Инициализация приложения
+// Run Инициализация приложения.
 func Run(cfg *config.Config) {
-
 	store := storage.New(cfg.DatabaseDsn)
 	storeFile, err := file.New(cfg.FileStorage)
 	if err != nil {
@@ -59,7 +58,11 @@ func Run(cfg *config.Config) {
 	// удаление по времени
 	go func() {
 		for {
-			newService.ClearExpiredRefreshTokens()
+			err := newService.ClearExpiredRefreshTokens()
+			if err != nil {
+				logger.Error(err)
+			}
+
 			time.Sleep(time.Second * 60)
 		}
 	}()
@@ -80,6 +83,7 @@ func Run(cfg *config.Config) {
 	// the request it is currently handling
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	if err := srv.Stop(ctx); err != nil {
 		log.Fatal("Server forced to shutdown: ", err)
 	}

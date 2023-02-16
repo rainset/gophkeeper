@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/caarlos0/env"
 	"github.com/rainset/gophkeeper/internal/client/app"
 	"github.com/rainset/gophkeeper/internal/client/config"
 	"github.com/rainset/gophkeeper/pkg/logger"
-	"os"
-	"os/signal"
-	"syscall"
 )
 
 func main() {

@@ -29,17 +29,22 @@ func (d *DataCard) Validate() error {
 	if strings.TrimSpace(d.Title) == "" {
 		return ErrDataCardTitleEmpty
 	}
-	if d.UserID == 0 {
+
+	if d.UserID > 0 {
 		return ErrDataCardUserIDEmpty
 	}
+
 	if strings.TrimSpace(d.Number) == "" {
 		return ErrDataCardNumberEmpty
 	}
+
 	if strings.TrimSpace(d.Date) == "" {
 		return ErrDataCardDateEmpty
 	}
+
 	if strings.TrimSpace(d.Cvv) == "" {
 		return ErrDataCardCvvEmpty
 	}
+
 	return nil
 }

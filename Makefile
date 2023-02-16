@@ -24,6 +24,10 @@ test:
 test-integration:
 	go test -tags integration -count=1 ./...
 
+## lint: run linter checks
+lint:
+	golangci-lint run
+
 ## bench: run benchmark tests
 bench:
 	go test -bench=1 ./...

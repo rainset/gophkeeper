@@ -20,8 +20,10 @@ func (u *User) Validate() error {
 	if strings.TrimSpace(u.Login) == "" {
 		return ErrUserLoginEmpty
 	}
+
 	if strings.TrimSpace(u.Password) == "" {
 		return ErrUserPasswordEmpty
 	}
+
 	return nil
 }

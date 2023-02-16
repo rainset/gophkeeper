@@ -13,22 +13,18 @@ linters:
     - exportloopref
     - gocognit
     - gocyclo
-    - gofmt
-    - gofumpt
     - goheader
     - goimports
     - gomodguard
     - goprintffuncname
     - gosimple
     - govet
+    - vetshadow
     - ineffassign
     - misspell
     - nakedret
     - nestif
-    - rowserrcheck
-    - sqlclosecheck
     - staticcheck
-    - structcheck
     - typecheck
     - unconvert
     - unused
@@ -36,48 +32,25 @@ linters:
     - whitespace
     - durationcheck
     - forbidigo
-    - forcetypeassert
-    - ifshort
     - importas
     - nilerr
     - predeclared
     - thelper
     - tparallel
-    - wastedassign
     - promlinter
     - bodyclose
-    # - dupl
     - godot
     - funlen
-    - wsl
-    # - gochecknoglobals
-    # - gochecknoinits
-    # - goconst
     - gocritic
-    # - godox
-    # - goerr113
-    # - gosec
-    # - noctx
     - prealloc
-    # - stylecheck
-    # - testpackage
-    # - cyclop
-    # - errorlint
-    - nlreturn
-    # - revive
-    # - tagliatelle
+    - stylecheck
     - unparam
-
 issues:
   exclude-rules:
-    - path: (_test\.go|tests)
+    - path: (_test\.go|tests|.docker)
       linters:
         - bodyclose
         - dupl
         - funlen
         - goerr113
-        #- gosec
         - noctx
-    - path: (internal/delivery/http)
-      linters:
-        - godot

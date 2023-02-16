@@ -27,9 +27,11 @@ func (d *DataCred) Validate() error {
 	if strings.TrimSpace(d.Title) == "" {
 		return ErrDataCredTitleEmpty
 	}
+
 	if strings.TrimSpace(d.Username) == "" {
 		return ErrDataCredUsernameEmpty
 	}
+
 	if strings.TrimSpace(d.Password) == "" {
 		return ErrDataCredPasswordEmpty
 	}
@@ -37,5 +39,6 @@ func (d *DataCred) Validate() error {
 	if d.UserID == 0 {
 		return ErrDataCardUserIDEmpty
 	}
+
 	return nil
 }

@@ -3,6 +3,12 @@ package app
 import (
 	"context"
 	"errors"
+	"image/color"
+	"log"
+	"net/url"
+	"path/filepath"
+	"time"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
@@ -16,29 +22,22 @@ import (
 	"github.com/rainset/gophkeeper/internal/client/model"
 	"github.com/rainset/gophkeeper/internal/client/service"
 	"github.com/rainset/gophkeeper/internal/client/service/channel"
-	"github.com/rainset/gophkeeper/internal/client/service/file"
 	"github.com/rainset/gophkeeper/internal/client/storage"
 	"github.com/rainset/gophkeeper/internal/client/ui"
 	"github.com/rainset/gophkeeper/pkg/hash"
 	"github.com/rainset/gophkeeper/pkg/logger"
-	"image/color"
-	"log"
-	"net/url"
-	"path/filepath"
-	"time"
 )
 
 type App struct {
 	window      fyne.Window
 	cfg         *config.Config
 	db          *storage.Base
-	httpService *service.HttpService
-	fileService *file.StorageFiles
-	channels    channel.Channels
+	HTTPService *service.HTTPService
+	FileService *service.FileService
+	Channels    channel.Channels
 }
 
 func New(ctx context.Context, cfg *config.Config) *App {
-
 	fyneApp := app.New()
 	w := fyneApp.NewWindow("Gophkeeper")
 	w.Resize(fyne.NewSize(500, 700))
@@ -50,19 +49,20 @@ func New(ctx context.Context, cfg *config.Config) *App {
 		log.Fatal(err)
 	}
 
-	fileService, err := file.New(filepath.Join(cfg.ClientFolder, "upload"))
+	fileService, err := service.New(filepath.Join(cfg.ClientFolder, "upload"))
 	if err != nil {
 		log.Fatal(err)
 	}
-	httpService := service.NewHttpService(cfg)
+
+	HTTPService := service.NewHTTPService(cfg)
 
 	return &App{
 		window:      w,
 		cfg:         cfg,
 		db:          db,
-		httpService: httpService,
-		fileService: fileService,
-		channels: channel.Channels{
+		HTTPService: HTTPService,
+		FileService: fileService,
+		Channels: channel.Channels{
 			SyncProgressBar:     make(chan float64, 1),
 			SyncProgressBarQuit: make(chan bool, 1),
 		},
@@ -70,19 +70,11 @@ func New(ctx context.Context, cfg *config.Config) *App {
 }
 
 func (a *App) Run() {
-
-	a.PageAuth()
-	//a.PageMain(ui.TypeCard)
-
+	a.pageAuth()
 	a.window.ShowAndRun()
-	//a.PageAuth()
-	//a.syncData()
-	//a.PageMain(ui.TypeCard)
-
 }
 
-func (a *App) PageAuth() {
-
+func (a *App) pageAuth() {
 	authForm := a.authForm()
 	regForm := a.regForm()
 
@@ -94,148 +86,24 @@ func (a *App) PageAuth() {
 	a.window.SetContent(tabs)
 }
 
-func (a *App) authForm() *widget.Form {
-
-	login := widget.NewEntry()
-	pass := widget.NewPasswordEntry()
-
-	login.Validator = validation.NewRegexp("^.{1,}", "обязательное поле")
-	pass.Validator = validation.NewRegexp("^.{1,}", "обязательное поле")
-
-	authForm := widget.NewForm(
-		widget.NewFormItem("Логин", login),
-		widget.NewFormItem("Пароль", pass),
-	)
-
-	authForm.SubmitText = "Войти"
-	authForm.OnSubmit = func() {
-
-		a.db.SetUser(login.Text)
-
-		c, err := a.db.GetConfig()
-		if err != nil {
-			dialog.ShowError(errors.New("ошибка чтения настроек хранилища"), a.window)
-			return
-		}
-
-		tokens, err := a.httpService.SignIn(model.User{Login: login.Text, Password: pass.Text})
-		if err != nil {
-
-			if errors.Is(err, service.ErrStatusUnauthorized) {
-				dialog.ShowError(service.ErrStatusUnauthorized, a.window)
-				return
-			}
-
-			if hash.Sha256(pass.Text) != c.Password {
-				dialog.ShowError(service.ErrStatusUnauthorized, a.window)
-				return
-			}
-		}
-
-		c.Login = login.Text
-		c.Password = hash.Sha256(pass.Text)
-		c.RefreshToken = tokens.RefreshToken
-		c.AccessToken = tokens.AccessToken
-
-		err = a.db.SetConfig(c)
-		if err != nil {
-			dialog.ShowError(errors.New("ошибка записи настроек хранилища"), a.window)
-			return
-		}
-
-		a.PageMain(ui.TypeCard)
-
-	}
-	return authForm
-}
-
-func (a *App) regForm() *widget.Form {
-
-	login := widget.NewEntry()
-	pass := widget.NewPasswordEntry()
-	pass2 := widget.NewPasswordEntry()
-
-	login.Validator = validation.NewRegexp("^.{1,}", "обязательное поле")
-	pass.Validator = validation.NewRegexp("^.{1,}", "обязательное поле")
-
-	pass2.Validator = validation.NewAllStrings(
-		validation.NewRegexp("^.{1,}", "обязательное поле"),
-		func(string) error {
-			if pass.Text != pass2.Text {
-				return errors.New("пароли не совпадают")
-			}
-			return nil
-		},
-	)
-
-	regForm := widget.NewForm(
-		widget.NewFormItem("Логин", login),
-		widget.NewFormItem("Пароль", pass),
-		widget.NewFormItem("Повторите пароль", pass2),
-	)
-
-	regForm.SubmitText = "Зарегистрироваться"
-	regForm.OnSubmit = func() {
-		tokens, err := a.httpService.SignUp(model.User{Login: login.Text, Password: pass.Text})
-		if err != nil {
-
-			logger.Error(err)
-
-			if errors.Is(err, service.ErrStatusLoginExists) {
-				dialog.ShowError(service.ErrStatusLoginExists, a.window)
-				return
-			}
-
-			dialog.ShowError(service.ErrServer, a.window)
-			return
-		}
-
-		a.db.SetUser(login.Text)
-
-		c, err := a.db.GetConfig()
-		if err != nil {
-			dialog.ShowError(errors.New("ошибка чтения настроек хранилища"), a.window)
-			return
-		}
-
-		c.Login = login.Text
-		c.Password = hash.Sha256(pass.Text)
-		c.RefreshToken = tokens.RefreshToken
-		c.AccessToken = tokens.AccessToken
-
-		logger.Error(c)
-
-		err = a.db.SetConfig(c)
-		if err != nil {
-			dialog.ShowError(errors.New("ошибка записи настроек хранилища"), a.window)
-			return
-		}
-
-		a.PageMain(ui.TypeCard)
-	}
-	return regForm
-}
-
-func (a *App) PageMain(dataType ui.DataType) {
-
+func (a *App) pageMain(dataType ui.DataType) {
 	var content *fyne.Container
 	var tabs *container.AppTabs
-	var syncBar *widget.ProgressBar
 
-	syncBar = widget.NewProgressBar()
+	syncBar := widget.NewProgressBar()
 	syncBar.Hide()
 
 	go func() {
 		for {
 			select {
-			case v := <-a.channels.SyncProgressBar:
+			case v := <-a.Channels.SyncProgressBar:
 				syncBar.SetValue(v)
 				logger.Info(v)
-			case quit := <-a.channels.SyncProgressBarQuit:
+			case quit := <-a.Channels.SyncProgressBarQuit:
 				if quit {
 					syncBar.Hide()
 					tabs.Show()
-					a.PageMain(ui.TypeCard)
+					a.pageMain(ui.TypeCard)
 				}
 			}
 		}
@@ -246,20 +114,15 @@ func (a *App) PageMain(dataType ui.DataType) {
 		switch selectedTab.Text {
 		case ui.TabCard.String():
 			dataType = ui.TypeCard
-			break
 		case ui.TabCred.String():
 			dataType = ui.TypeCred
-			break
 		case ui.TabText.String():
 			dataType = ui.TypeText
-			break
 		case ui.TabFile.String():
 			dataType = ui.TypeFile
-			break
 		}
 		logger.Info("Добавить ", dataType)
-		a.PageAdd(0, dataType)
-		return
+		a.pageAdd(0, dataType)
 	})
 
 	tasksBar := container.NewHBox(
@@ -267,12 +130,12 @@ func (a *App) PageMain(dataType ui.DataType) {
 			syncBar.SetValue(0)
 			syncBar.Show()
 			tabs.Hide()
-			a.syncData()
+			a.SyncData()
 		}),
 		addBtn,
 		layout.NewSpacer(),
 		widget.NewButtonWithIcon("Выйти", theme.ContentClearIcon(), func() {
-			a.PageAuth()
+			a.pageAuth()
 		}),
 	)
 
@@ -291,16 +154,12 @@ func (a *App) PageMain(dataType ui.DataType) {
 	switch dataType {
 	case ui.TypeCard:
 		tabs.Select(tabCard)
-		break
 	case ui.TypeCred:
 		tabs.Select(tabCred)
-		break
 	case ui.TypeText:
 		tabs.Select(tabText)
-		break
 	case ui.TypeFile:
 		tabs.Select(tabFile)
-		break
 	}
 
 	content = container.NewVBox(
@@ -313,9 +172,8 @@ func (a *App) PageMain(dataType ui.DataType) {
 	a.window.SetContent(content)
 }
 
-func (a *App) PageAdd(ID int, dataType ui.DataType) {
-
-	logger.Infof("pageadd %d %s", ID, dataType)
+func (a *App) pageAdd(localID int, dataType ui.DataType) {
+	logger.Infof("pageadd %d %s", localID, dataType)
 
 	var content *fyne.Container
 
@@ -324,16 +182,16 @@ func (a *App) PageAdd(ID int, dataType ui.DataType) {
 	tasksBar := container.NewHBox(
 		widget.NewButtonWithIcon("Назад", theme.NavigateBackIcon(), func() {
 			logger.Info("back button event ", dataType)
-			a.PageMain(dataType)
+			a.pageMain(dataType)
 		}),
 		layout.NewSpacer(),
 		barTitle,
 	)
 
-	tabCard := container.NewTabItem(ui.TabCard.String(), container.New(layout.NewPaddedLayout(), a.addCardForm(ID)))
-	tabCred := container.NewTabItem(ui.TabCred.String(), container.New(layout.NewPaddedLayout(), a.addCredForm(ID)))
-	tabText := container.NewTabItem(ui.TabText.String(), container.New(layout.NewPaddedLayout(), a.addTextForm(ID)))
-	tabFile := container.NewTabItem(ui.TabFile.String(), container.New(layout.NewPaddedLayout(), a.addFileForm(ID)))
+	tabCard := container.NewTabItem(ui.TabCard.String(), container.New(layout.NewPaddedLayout(), a.addCardForm(localID)))
+	tabCred := container.NewTabItem(ui.TabCred.String(), container.New(layout.NewPaddedLayout(), a.addCredForm(localID)))
+	tabText := container.NewTabItem(ui.TabText.String(), container.New(layout.NewPaddedLayout(), a.addTextForm(localID)))
+	tabFile := container.NewTabItem(ui.TabFile.String(), container.New(layout.NewPaddedLayout(), a.addFileForm(localID)))
 
 	tabs := container.NewAppTabs(
 		tabCard,
@@ -345,16 +203,12 @@ func (a *App) PageAdd(ID int, dataType ui.DataType) {
 	switch dataType {
 	case ui.TypeCard:
 		tabs.Select(tabCard)
-		break
 	case ui.TypeCred:
 		tabs.Select(tabCred)
-		break
 	case ui.TypeText:
 		tabs.Select(tabText)
-		break
 	case ui.TypeFile:
 		tabs.Select(tabFile)
-		break
 	}
 
 	content = container.NewVBox(
@@ -366,73 +220,41 @@ func (a *App) PageAdd(ID int, dataType ui.DataType) {
 	a.window.SetContent(content)
 }
 
-func (a *App) PageEdit(ID int, dataType ui.DataType) {
-
-	logger.Infof("PageEdit %d %s", ID, dataType)
+func (a *App) pageEdit(localID int, dataType ui.DataType) {
+	logger.Infof("pageEdit %d %s", localID, dataType)
 
 	var content *fyne.Container
 
-	//barTitle := canvas.NewText("Новая запись", color.Black)
 	deleteBtn := widget.NewButtonWithIcon("Удалить", theme.DeleteIcon(), func() {
-
 		dialog.ShowConfirm("Удалить", "Вы действительно хотите удалить запись?", func(b bool) {
 			if b {
 				var err error
-				c, err := a.db.GetConfig()
-				if err != nil {
-					dialog.ShowError(errors.New("ошибка чтения настроек хранилища"), a.window)
-					return
-				}
-
 				switch dataType {
 				case ui.TypeCard:
-					item, err := a.db.GetCard(ID)
-					if err != nil {
-						return
-					}
-					go a.httpService.DeleteCard(c.AccessToken, item.ExternalID)
-					err = a.db.DeleteCard(ID)
-					break
+					err = a.DeleteCard(localID)
 				case ui.TypeCred:
-					item, err := a.db.GetCred(ID)
-					if err != nil {
-						return
-					}
-					go a.httpService.DeleteCred(c.AccessToken, item.ExternalID)
-					err = a.db.DeleteCred(ID)
-					break
+					err = a.DeleteCred(localID)
 				case ui.TypeText:
-					item, err := a.db.GetText(ID)
-					if err != nil {
-						return
-					}
-					go a.httpService.DeleteText(c.AccessToken, item.ExternalID)
-					err = a.db.DeleteText(ID)
-					break
+					err = a.DeleteText(localID)
 				case ui.TypeFile:
-					item, err := a.db.GetFile(ID)
-					if err != nil {
-						return
-					}
-					go a.httpService.DeleteFile(c.AccessToken, item.ExternalID)
-					err = a.db.DeleteFile(ID)
-					break
+					err = a.DeleteFile(localID)
 				}
+
 				if err != nil {
 					dialog.ShowError(errors.New("ошибка при удалении записи"), a.window)
+
 					return
 				}
-				a.PageMain(dataType)
+
+				a.pageMain(dataType)
 			}
-
 		}, a.window)
-
 	})
 
 	tasksBar := container.NewHBox(
 		widget.NewButtonWithIcon("Назад", theme.NavigateBackIcon(), func() {
 			logger.Error("Назад ", dataType)
-			a.PageMain(dataType)
+			a.pageMain(dataType)
 		}),
 		layout.NewSpacer(),
 		deleteBtn,
@@ -444,17 +266,13 @@ func (a *App) PageEdit(ID int, dataType ui.DataType) {
 
 	switch dataType {
 	case ui.TypeCard:
-		editCont = container.New(layout.NewPaddedLayout(), a.addCardForm(ID))
-		break
+		editCont = container.New(layout.NewPaddedLayout(), a.addCardForm(localID))
 	case ui.TypeCred:
-		editCont = container.New(layout.NewPaddedLayout(), a.addCredForm(ID))
-		break
+		editCont = container.New(layout.NewPaddedLayout(), a.addCredForm(localID))
 	case ui.TypeText:
-		editCont = container.New(layout.NewPaddedLayout(), a.addTextForm(ID))
-		break
+		editCont = container.New(layout.NewPaddedLayout(), a.addTextForm(localID))
 	case ui.TypeFile:
-		editCont = container.New(layout.NewPaddedLayout(), a.addFileForm(ID))
-		break
+		editCont = container.New(layout.NewPaddedLayout(), a.addFileForm(localID))
 	}
 
 	content = container.NewVBox(
@@ -466,8 +284,131 @@ func (a *App) PageEdit(ID int, dataType ui.DataType) {
 	a.window.SetContent(content)
 }
 
-func (a *App) addCardForm(ID int) *fyne.Container {
+func (a *App) authForm() *widget.Form {
+	login := widget.NewEntry()
+	pass := widget.NewPasswordEntry()
 
+	login.Validator = validation.NewRegexp("^.{1,}", "обязательное поле")
+	pass.Validator = validation.NewRegexp("^.{1,}", "обязательное поле")
+
+	authForm := widget.NewForm(
+		widget.NewFormItem("Логин", login),
+		widget.NewFormItem("Пароль", pass),
+	)
+
+	authForm.SubmitText = "Войти"
+	authForm.OnSubmit = func() {
+		a.SetUser(login.Text)
+
+		c, err := a.GetUserConfig()
+		if err != nil {
+			dialog.ShowError(errors.New("ошибка чтения настроек хранилища"), a.window)
+
+			return
+		}
+
+		tokens, err := a.HTTPService.SignIn(model.User{Login: login.Text, Password: pass.Text})
+		if err != nil {
+			if errors.Is(err, service.ErrStatusUnauthorized) {
+				dialog.ShowError(service.ErrStatusUnauthorized, a.window)
+
+				return
+			}
+
+			if hash.Sha256(pass.Text) != c.Password {
+				dialog.ShowError(service.ErrStatusUnauthorized, a.window)
+
+				return
+			}
+		}
+
+		c.Login = login.Text
+		c.Password = hash.Sha256(pass.Text)
+		c.RefreshToken = tokens.RefreshToken
+		c.AccessToken = tokens.AccessToken
+
+		err = a.SetUserConfig(c)
+		if err != nil {
+			dialog.ShowError(errors.New("ошибка записи настроек хранилища"), a.window)
+
+			return
+		}
+
+		a.pageMain(ui.TypeCard)
+	}
+
+	return authForm
+}
+
+func (a *App) regForm() *widget.Form {
+	login := widget.NewEntry()
+	pass := widget.NewPasswordEntry()
+	pass2 := widget.NewPasswordEntry()
+
+	login.Validator = validation.NewRegexp("^.{1,}", "обязательное поле")
+	pass.Validator = validation.NewRegexp("^.{1,}", "обязательное поле")
+
+	pass2.Validator = validation.NewAllStrings(
+		validation.NewRegexp("^.{1,}", "обязательное поле"),
+		func(string) error {
+			if pass.Text != pass2.Text {
+				return errors.New("пароли не совпадают")
+			}
+
+			return nil
+		},
+	)
+
+	regForm := widget.NewForm(
+		widget.NewFormItem("Логин", login),
+		widget.NewFormItem("Пароль", pass),
+		widget.NewFormItem("Повторите пароль", pass2),
+	)
+
+	regForm.SubmitText = "Зарегистрироваться"
+	regForm.OnSubmit = func() {
+		tokens, err := a.HTTPService.SignUp(model.User{Login: login.Text, Password: pass.Text})
+		if err != nil {
+			logger.Error(err)
+
+			if errors.Is(err, service.ErrStatusLoginExists) {
+				dialog.ShowError(service.ErrStatusLoginExists, a.window)
+
+				return
+			}
+
+			dialog.ShowError(service.ErrServer, a.window)
+
+			return
+		}
+
+		a.SetUser(login.Text)
+		c, err := a.GetUserConfig()
+		if err != nil {
+			dialog.ShowError(errors.New("ошибка чтения настроек хранилища"), a.window)
+
+			return
+		}
+
+		c.Login = login.Text
+		c.Password = hash.Sha256(pass.Text)
+		c.RefreshToken = tokens.RefreshToken
+		c.AccessToken = tokens.AccessToken
+
+		err = a.SetUserConfig(c)
+		if err != nil {
+			dialog.ShowError(errors.New("ошибка записи настроек хранилища"), a.window)
+
+			return
+		}
+
+		a.pageMain(ui.TypeCard)
+	}
+
+	return regForm
+}
+
+func (a *App) addCardForm(localID int) *fyne.Container {
 	var err error
 	var item model.DataCard
 
@@ -492,11 +433,12 @@ func (a *App) addCardForm(ID int) *fyne.Container {
 	cardCvv = widget.NewEntry()
 	meta = widget.NewMultiLineEntry()
 
-	if ID > 0 {
-		item, err = a.db.GetCard(ID)
+	if localID > 0 {
+		item, err = a.GetCard(localID)
 		if err != nil {
 			logger.Error(err)
 		}
+
 		title.Text = item.Title
 		cardNumber.Text = item.Number
 		cardDate.Text = item.Date
@@ -526,11 +468,10 @@ func (a *App) addCardForm(ID int) *fyne.Container {
 
 	addForm.CancelText = "Отмена"
 	addForm.OnCancel = func() {
-		a.PageMain(ui.TypeCard)
+		a.pageMain(ui.TypeCard)
 	}
 	addForm.SubmitText = "Сохранить"
 	addForm.OnSubmit = func() {
-
 		var err error
 
 		cardData := model.DataCard{
@@ -542,24 +483,24 @@ func (a *App) addCardForm(ID int) *fyne.Container {
 			UpdatedAt: time.Now(),
 		}
 
-		if ID > 0 {
+		if localID > 0 {
 			cardData.LocalID = item.LocalID
 		}
 
-		err = a.db.AddCard(cardData)
+		err = a.AddCard(cardData)
 
 		if err != nil {
 			dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
+
 			return
 		}
 
-		a.PageMain(ui.TypeCard)
+		a.pageMain(ui.TypeCard)
 	}
 	return container.NewVBox(addForm)
 }
 
-func (a *App) addCredForm(ID int) *fyne.Container {
-
+func (a *App) addCredForm(localID int) *fyne.Container {
 	var err error
 	var item model.DataCred
 
@@ -579,8 +520,8 @@ func (a *App) addCredForm(ID int) *fyne.Container {
 	password = widget.NewPasswordEntry()
 	meta = widget.NewMultiLineEntry()
 
-	if ID > 0 {
-		item, err = a.db.GetCred(ID)
+	if localID > 0 {
+		item, err = a.GetCred(localID)
 		if err != nil {
 			logger.Error(err)
 		}
@@ -608,11 +549,10 @@ func (a *App) addCredForm(ID int) *fyne.Container {
 
 	addForm.CancelText = "Отмена"
 	addForm.OnCancel = func() {
-		a.PageMain(ui.TypeCred)
+		a.pageMain(ui.TypeCred)
 	}
 	addForm.SubmitText = "Сохранить"
 	addForm.OnSubmit = func() {
-
 		var err error
 
 		credData := model.DataCred{
@@ -623,24 +563,24 @@ func (a *App) addCredForm(ID int) *fyne.Container {
 			UpdatedAt: time.Now(),
 		}
 
-		if ID > 0 {
+		if localID > 0 {
 			credData.LocalID = item.LocalID
 		}
 
-		err = a.db.AddCred(credData)
+		err = a.AddCred(credData)
 
 		if err != nil {
 			dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
+
 			return
 		}
 
-		a.PageMain(ui.TypeCred)
+		a.pageMain(ui.TypeCred)
 	}
 	return container.NewVBox(addForm)
 }
 
-func (a *App) addTextForm(ID int) *fyne.Container {
-
+func (a *App) addTextForm(localID int) *fyne.Container {
 	var err error
 	var item model.DataText
 
@@ -657,8 +597,8 @@ func (a *App) addTextForm(ID int) *fyne.Container {
 	text = widget.NewMultiLineEntry()
 	meta = widget.NewMultiLineEntry()
 
-	if ID > 0 {
-		item, err = a.db.GetText(ID)
+	if localID > 0 {
+		item, err = a.GetText(localID)
 		if err != nil {
 			logger.Error(err)
 		}
@@ -682,11 +622,10 @@ func (a *App) addTextForm(ID int) *fyne.Container {
 
 	addForm.CancelText = "Отмена"
 	addForm.OnCancel = func() {
-		a.PageMain(ui.TypeText)
+		a.pageMain(ui.TypeText)
 	}
 	addForm.SubmitText = "Сохранить"
 	addForm.OnSubmit = func() {
-
 		var err error
 
 		textData := model.DataText{
@@ -696,24 +635,24 @@ func (a *App) addTextForm(ID int) *fyne.Container {
 			UpdatedAt: time.Now(),
 		}
 
-		if ID > 0 {
+		if localID > 0 {
 			textData.LocalID = item.LocalID
 		}
 
-		err = a.db.AddText(textData)
+		err = a.AddText(textData)
 
 		if err != nil {
 			dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
+
 			return
 		}
 
-		a.PageMain(ui.TypeText)
+		a.pageMain(ui.TypeText)
 	}
 	return container.NewVBox(addForm)
 }
 
-func (a *App) addFileForm(ID int) *fyne.Container {
-
+func (a *App) addFileForm(localID int) *fyne.Container {
 	type TempFile struct {
 		exists   bool
 		filename string
@@ -739,7 +678,6 @@ func (a *App) addFileForm(ID int) *fyne.Container {
 
 	uploadBtn = widget.NewButton("Выбрать файл", func() {
 		dialog.ShowFileOpen(func(r fyne.URIReadCloser, err error) {
-
 			if r == nil {
 				return
 			}
@@ -748,12 +686,11 @@ func (a *App) addFileForm(ID int) *fyne.Container {
 			tempFile.filename = r.URI().Name()
 			tempFile.r = r
 			uploadBtn.SetText(r.URI().Name())
-
 		}, a.window)
 	})
 
-	if ID > 0 {
-		item, err = a.db.GetFile(ID)
+	if localID > 0 {
+		item, err = a.GetFile(localID)
 		if err != nil {
 			logger.Error(err)
 		}
@@ -764,7 +701,6 @@ func (a *App) addFileForm(ID int) *fyne.Container {
 	}
 
 	title.Validator = validation.NewRegexp("^.{1,}", "обязательное поле")
-	//text.Validator = validation.NewRegexp("^.{1,}", "обязательное поле")
 
 	titleFormItem = widget.NewFormItem("Заголовок", title)
 	uploadFormItem = widget.NewFormItem("Файл", uploadBtn)
@@ -778,22 +714,17 @@ func (a *App) addFileForm(ID int) *fyne.Container {
 
 	addForm.CancelText = "Отмена"
 	addForm.OnCancel = func() {
-		a.PageMain(ui.TypeFile)
+		a.pageMain(ui.TypeFile)
 	}
 	addForm.SubmitText = "Сохранить"
 	addForm.OnSubmit = func() {
-
 		if tempFile.exists {
-			filePath, err := a.fileService.SaveFile(tempFile.r, tempFile.ext)
+			filePath, err := a.FileService.SaveFile(tempFile.r, tempFile.ext)
 			if err != nil {
 				dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
+
 				return
 			}
-			//filePathAbs, err := filepath.Abs(filePath)
-			//if err != nil {
-			//	dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
-			//	return
-			//}
 
 			saveItem := model.DataFile{
 				Title:     title.Text,
@@ -804,32 +735,31 @@ func (a *App) addFileForm(ID int) *fyne.Container {
 				UpdatedAt: time.Now(),
 			}
 
-			if ID > 0 {
+			if localID > 0 {
 				saveItem.LocalID = item.LocalID
 			}
 
-			err = a.db.AddFile(saveItem)
+			err = a.AddFile(saveItem)
 			if err != nil {
-				logger.Error("a.db.AddFile: ", err)
+				logger.Error("AddFile: ", err)
 				dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
 				return
 			}
 
-			err = a.fileService.DeleteFile(item.Path)
+			err = a.FileService.DeleteFile(item.Path)
 			if err != nil {
 				dialog.ShowError(errors.New("ошибка удаления старой версии файла"), a.window)
 				return
 			}
 		}
 
-		a.PageMain(ui.TypeFile)
+		a.pageMain(ui.TypeFile)
 	}
 
-	if ID > 0 {
-
+	if localID > 0 {
 		fileDir := filepath.Dir(item.Path)
-		u, err := url.Parse(fileDir)
-		if err != nil {
+		u, errP := url.Parse(fileDir)
+		if errP != nil {
 			logger.Error("url parse ", err)
 		}
 
@@ -849,7 +779,7 @@ func (a *App) cardList() *fyne.Container {
 
 	noItems := container.NewCenter(canvas.NewText("Нет записей", color.Black))
 
-	cards, err = a.db.GetAllCards()
+	cards, err = a.GetAllCards()
 	if err != nil {
 		logger.Error(err)
 	}
@@ -868,15 +798,7 @@ func (a *App) cardList() *fyne.Container {
 	)
 
 	cardsList.OnSelected = func(id widget.ListItemID) {
-
-		logger.Info("cardsList.OnSelected:", cards[id].LocalID, cards[id])
-		logger.Info("cards[id].ID:", cards[id].LocalID)
-		logger.Info("cards[id].Title:", cards[id].Title)
-		logger.Info("cards[id].UpdatedAt:", cards[id].UpdatedAt)
-		logger.Info("cards[id].ExternalID:", cards[id].ExternalID)
-		logger.Info("cards[id].Number:", cards[id].Number)
-
-		a.PageEdit(cards[id].LocalID, ui.TypeCard)
+		a.pageEdit(cards[id].LocalID, ui.TypeCard)
 	}
 
 	scroll := container.NewScroll(cardsList)
@@ -895,7 +817,7 @@ func (a *App) credList() *fyne.Container {
 
 	noItems := container.NewCenter(canvas.NewText("Нет записей", color.Black))
 
-	creds, err = a.db.GetAllCreds()
+	creds, err = a.GetAllCreds()
 	if err != nil {
 		logger.Error(err)
 	}
@@ -914,7 +836,7 @@ func (a *App) credList() *fyne.Container {
 	)
 
 	credsList.OnSelected = func(id widget.ListItemID) {
-		a.PageEdit(creds[id].LocalID, ui.TypeCred)
+		a.pageEdit(creds[id].LocalID, ui.TypeCred)
 	}
 
 	scroll := container.NewScroll(credsList)
@@ -933,7 +855,7 @@ func (a *App) textList() *fyne.Container {
 
 	noItems := container.NewCenter(canvas.NewText("Нет записей", color.Black))
 
-	texts, err = a.db.GetAllTexts()
+	texts, err = a.GetAllTexts()
 	if err != nil {
 		logger.Error(err)
 	}
@@ -952,7 +874,7 @@ func (a *App) textList() *fyne.Container {
 	)
 
 	textsList.OnSelected = func(id widget.ListItemID) {
-		a.PageEdit(texts[id].LocalID, ui.TypeText)
+		a.pageEdit(texts[id].LocalID, ui.TypeText)
 	}
 
 	scroll := container.NewScroll(textsList)
@@ -971,7 +893,7 @@ func (a *App) fileList() *fyne.Container {
 
 	noItems := container.NewCenter(canvas.NewText("Нет записей", color.Black))
 
-	files, err = a.db.GetAllFiles()
+	files, err = a.GetAllFiles()
 	if err != nil {
 		logger.Error(err)
 	}
@@ -990,7 +912,7 @@ func (a *App) fileList() *fyne.Container {
 	)
 
 	filesList.OnSelected = func(id widget.ListItemID) {
-		a.PageEdit(files[id].LocalID, ui.TypeFile)
+		a.pageEdit(files[id].LocalID, ui.TypeFile)
 	}
 
 	scroll := container.NewScroll(filesList)
@@ -1002,75 +924,85 @@ func (a *App) fileList() *fyne.Container {
 	return container.New(layout.NewPaddedLayout(), scroll, noItems)
 }
 
-func (a *App) syncData() {
-
-	c, err := a.db.GetConfig()
+func (a *App) SyncData() {
+	c, err := a.GetUserConfig()
 	if err != nil {
 		dialog.ShowError(errors.New("ошибка чтения настроек хранилища"), a.window)
+
 		return
 	}
 
 	logger.Info(c)
 
-	tokens, err := a.httpService.PostRefreshToken(c.RefreshToken)
+	tokens, err := a.HTTPService.PostRefreshToken(c.RefreshToken)
 	if err != nil {
 		logger.Error(err)
-		dialog.ShowError(errors.New("сессия устарела, авторизуйтесь повторно"), a.window)
-		return
+
+		if err == service.ErrStatusUnauthorized {
+			dialog.ShowError(errors.New("сессия устарела, авторизуйтесь повторно"), a.window)
+			a.pageAuth()
+
+			return
+		}
+
+		if err == service.ErrStatusUnauthorized {
+			dialog.ShowError(errors.New("ошибка соединения с сервером"), a.window)
+
+			return
+		}
 	}
+
 	logger.Info("tokens ", tokens)
 
 	c.RefreshToken = tokens.RefreshToken
 	c.AccessToken = tokens.AccessToken
 
-	err = a.db.SetConfig(c)
+	err = a.SetUserConfig(c)
 	if err != nil {
 		logger.Error(err)
 		dialog.ShowError(errors.New("ошибка записи настроек хранилища"), a.window)
 		return
 	}
 
-	err = a.syncCards(tokens.AccessToken)
+	err = a.SyncCards(tokens.AccessToken)
 	if err != nil {
 		dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
 		return
 	}
 
-	a.channels.SyncProgressBar <- 0.25
+	a.Channels.SyncProgressBar <- 0.25
 
-	err = a.syncCreds(tokens.AccessToken)
+	err = a.SyncCreds(tokens.AccessToken)
 	if err != nil {
 		dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
 		return
 	}
 
-	a.channels.SyncProgressBar <- 0.50
+	a.Channels.SyncProgressBar <- 0.50
 
-	err = a.syncTexts(tokens.AccessToken)
+	err = a.SyncTexts(tokens.AccessToken)
 	if err != nil {
 		dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
 		return
 	}
 
-	a.channels.SyncProgressBar <- 0.75
+	a.Channels.SyncProgressBar <- 0.75
 
-	err = a.syncFiles(tokens.AccessToken)
+	err = a.SyncFiles(tokens.AccessToken)
 	if err != nil {
 		dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
 		return
 	}
 
-	a.channels.SyncProgressBar <- 1.0
-	//time.Sleep(500 * time.Millisecond)
-	a.channels.SyncProgressBarQuit <- true
+	a.Channels.SyncProgressBar <- 1.0
 
+	a.Channels.SyncProgressBarQuit <- true
 }
 
-func (a *App) syncCards(accessToken string) (err error) {
-
+func (a *App) SyncCards(accessToken string) (err error) {
 	cardsMap := make(map[int]model.DataCard)
 
-	cards, err := a.db.GetAllCards()
+	cards, err := a.GetAllCards()
 	if err != nil {
 		logger.Error(err)
 		return err
@@ -1080,7 +1012,7 @@ func (a *App) syncCards(accessToken string) (err error) {
 		cardsMap[v.ExternalID] = v
 	}
 
-	getCards, err := a.httpService.GetCardList(accessToken)
+	getCards, err := a.HTTPService.GetCardList(accessToken)
 	if err != nil {
 		logger.Error(err)
 		return err
@@ -1089,7 +1021,7 @@ func (a *App) syncCards(accessToken string) (err error) {
 	// создаем записи в бд клиента
 	for _, v := range getCards {
 		if val, ok := cardsMap[v.ExternalID]; ok {
-			//update
+
 			// если дата на сервере новее обновим локальные данные
 			if val.UpdatedAt.Unix() < v.UpdatedAt.Unix() {
 				updateCard := model.DataCard{
@@ -1102,16 +1034,14 @@ func (a *App) syncCards(accessToken string) (err error) {
 					Meta:       v.Meta,
 					UpdatedAt:  v.UpdatedAt,
 				}
-				errUpdate := a.db.AddCard(updateCard)
+				errUpdate := a.AddCard(updateCard)
 				if errUpdate != nil {
-					logger.Error("syncCards - errUpdate: ", errUpdate)
+					logger.Error("SyncCards - errUpdate: ", errUpdate)
 				}
+
 				logger.Info("updateCard:", updateCard)
 			}
-
 		} else {
-			//add
-
 			newCard := model.DataCard{
 				ExternalID: v.ExternalID,
 				Title:      v.Title,
@@ -1122,10 +1052,11 @@ func (a *App) syncCards(accessToken string) (err error) {
 				UpdatedAt:  v.UpdatedAt,
 			}
 
-			errAdd := a.db.AddCard(newCard)
+			errAdd := a.AddCard(newCard)
 			if errAdd != nil {
-				logger.Error("syncCards - errAdd: ", errAdd)
+				logger.Error("SyncCards - errAdd: ", errAdd)
 			}
+
 			logger.Info("newCard:", newCard)
 		}
 	}
@@ -1134,11 +1065,10 @@ func (a *App) syncCards(accessToken string) (err error) {
 	return nil
 }
 
-func (a *App) syncCreds(accessToken string) (err error) {
-
+func (a *App) SyncCreds(accessToken string) (err error) {
 	credsMap := make(map[int]model.DataCred)
 
-	creds, err := a.db.GetAllCreds()
+	creds, err := a.GetAllCreds()
 	if err != nil {
 		logger.Error(err)
 		return err
@@ -1148,7 +1078,7 @@ func (a *App) syncCreds(accessToken string) (err error) {
 		credsMap[v.ExternalID] = v
 	}
 
-	getCreds, err := a.httpService.GetCredList(accessToken)
+	getCreds, err := a.HTTPService.GetCredList(accessToken)
 	if err != nil {
 		logger.Error(err)
 		return err
@@ -1157,7 +1087,7 @@ func (a *App) syncCreds(accessToken string) (err error) {
 	// создаем записи в бд клиента
 	for _, v := range getCreds {
 		if val, ok := credsMap[v.ExternalID]; ok {
-			//update
+
 			// если дата на сервере новее обновим локальные данные
 			if val.UpdatedAt.Unix() < v.UpdatedAt.Unix() {
 				updateCred := model.DataCred{
@@ -1169,16 +1099,14 @@ func (a *App) syncCreds(accessToken string) (err error) {
 					Meta:       v.Meta,
 					UpdatedAt:  v.UpdatedAt,
 				}
-				errUpdate := a.db.AddCred(updateCred)
+				errUpdate := a.AddCred(updateCred)
 				if errUpdate != nil {
-					logger.Error("syncCreds - errUpdate: ", errUpdate)
+					logger.Error("SyncCreds - errUpdate: ", errUpdate)
 				}
+
 				logger.Info("updateCred:", updateCred)
 			}
-
 		} else {
-			//add
-
 			newCred := model.DataCred{
 				ExternalID: v.ExternalID,
 				Title:      v.Title,
@@ -1188,10 +1116,11 @@ func (a *App) syncCreds(accessToken string) (err error) {
 				UpdatedAt:  v.UpdatedAt,
 			}
 
-			errAdd := a.db.AddCred(newCred)
+			errAdd := a.AddCred(newCred)
 			if errAdd != nil {
-				logger.Error("syncCreds - errAdd: ", errAdd)
+				logger.Error("SyncCreds - errAdd: ", errAdd)
 			}
+
 			logger.Info("newCred:", newCred)
 		}
 	}
@@ -1200,11 +1129,10 @@ func (a *App) syncCreds(accessToken string) (err error) {
 	return nil
 }
 
-func (a *App) syncTexts(accessToken string) (err error) {
-
+func (a *App) SyncTexts(accessToken string) (err error) {
 	textsMap := make(map[int]model.DataText)
 
-	texts, err := a.db.GetAllTexts()
+	texts, err := a.GetAllTexts()
 	if err != nil {
 		logger.Error(err)
 		return err
@@ -1214,7 +1142,7 @@ func (a *App) syncTexts(accessToken string) (err error) {
 		textsMap[v.ExternalID] = v
 	}
 
-	getTexts, err := a.httpService.GetTextList(accessToken)
+	getTexts, err := a.HTTPService.GetTextList(accessToken)
 	if err != nil {
 		logger.Error(err)
 		return err
@@ -1223,7 +1151,7 @@ func (a *App) syncTexts(accessToken string) (err error) {
 	// создаем записи в бд клиента
 	for _, v := range getTexts {
 		if val, ok := textsMap[v.ExternalID]; ok {
-			//update
+
 			// если дата на сервере новее обновим локальные данные
 			if val.UpdatedAt.Unix() < v.UpdatedAt.Unix() {
 				updateText := model.DataText{
@@ -1234,16 +1162,14 @@ func (a *App) syncTexts(accessToken string) (err error) {
 					Meta:       v.Meta,
 					UpdatedAt:  v.UpdatedAt,
 				}
-				errUpdate := a.db.AddText(updateText)
+				errUpdate := a.AddText(updateText)
 				if errUpdate != nil {
-					logger.Error("syncTexts - errUpdate: ", errUpdate)
+					logger.Error("SyncTexts - errUpdate: ", errUpdate)
 				}
+
 				logger.Info("updateCred:", updateText)
 			}
-
 		} else {
-			//add
-
 			newText := model.DataText{
 				ExternalID: v.ExternalID,
 				Title:      v.Title,
@@ -1252,9 +1178,9 @@ func (a *App) syncTexts(accessToken string) (err error) {
 				UpdatedAt:  v.UpdatedAt,
 			}
 
-			errAdd := a.db.AddText(newText)
+			errAdd := a.AddText(newText)
 			if errAdd != nil {
-				logger.Error("syncTexts - errAdd: ", errAdd)
+				logger.Error("SyncTexts - errAdd: ", errAdd)
 			}
 			logger.Info("newText:", newText)
 		}
@@ -1263,11 +1189,10 @@ func (a *App) syncTexts(accessToken string) (err error) {
 	return nil
 }
 
-func (a *App) syncFiles(accessToken string) (err error) {
-
+func (a *App) SyncFiles(accessToken string) (err error) {
 	filesMap := make(map[int]model.DataFile)
 
-	files, err := a.db.GetAllFiles()
+	files, err := a.GetAllFiles()
 	if err != nil {
 		logger.Error(err)
 		return err
@@ -1277,7 +1202,7 @@ func (a *App) syncFiles(accessToken string) (err error) {
 		filesMap[v.ExternalID] = v
 	}
 
-	getFiles, err := a.httpService.GetFileList(accessToken)
+	getFiles, err := a.HTTPService.GetFileList(accessToken)
 	if err != nil {
 		logger.Error(err)
 		return err
@@ -1286,20 +1211,21 @@ func (a *App) syncFiles(accessToken string) (err error) {
 	// создаем записи в бд клиента
 	for _, v := range getFiles {
 		if val, ok := filesMap[v.ExternalID]; ok {
-			//update
+
 			// если дата на сервере новее обновим локальные данные
 			if val.UpdatedAt.Unix() < v.UpdatedAt.Unix() {
-
-				dFile, errDF := a.httpService.DownloadFile(v.Path)
+				dFile, errDF := a.HTTPService.DownloadFile(v.Path)
 				if errDF != nil {
 					logger.Error("downloadFile: ", v.Filename)
+
 					continue
 				}
 
 				ext := filepath.Ext(v.Filename)
-				filePath, errFP := a.fileService.SaveFile(dFile, ext)
+				filePath, errFP := a.FileService.SaveFile(dFile, ext)
 				if errFP != nil {
 					logger.Error("fileService.SaveFile: ", errFP)
+
 					continue
 				}
 
@@ -1314,32 +1240,31 @@ func (a *App) syncFiles(accessToken string) (err error) {
 					Meta:       v.Meta,
 					UpdatedAt:  v.UpdatedAt,
 				}
-				errUpdate := a.db.AddFile(updateFile)
+				errUpdate := a.AddFile(updateFile)
 				if errUpdate != nil {
 					logger.Error("syncFile - errUpdate: ", errUpdate)
 				}
+
 				logger.Info("updateFile:", updateFile)
 
-				errD := a.fileService.DeleteFile(val.Path)
+				errD := a.FileService.DeleteFile(val.Path)
 				if errD != nil {
 					continue
 				}
-
 			}
-
 		} else {
-			//add
-
-			dFile, errDF := a.httpService.DownloadFile(v.Path)
+			dFile, errDF := a.HTTPService.DownloadFile(v.Path)
 			if errDF != nil {
 				logger.Error("downloadFile: ", v.Filename)
+
 				continue
 			}
 
 			ext := filepath.Ext(v.Filename)
-			filePath, errFP := a.fileService.SaveFile(dFile, ext)
+			filePath, errFP := a.FileService.SaveFile(dFile, ext)
 			if errFP != nil {
 				logger.Error("fileService.SaveFile: ", errFP)
+
 				continue
 			}
 
@@ -1354,7 +1279,7 @@ func (a *App) syncFiles(accessToken string) (err error) {
 				UpdatedAt:  v.UpdatedAt,
 			}
 
-			errAdd := a.db.AddFile(newFile)
+			errAdd := a.AddFile(newFile)
 			if errAdd != nil {
 				logger.Error("syncFile - errAdd: ", errAdd)
 			}
@@ -1363,4 +1288,160 @@ func (a *App) syncFiles(accessToken string) (err error) {
 	}
 
 	return nil
+}
+
+func (a *App) SetUser(login string) {
+	a.db.SetUser(login)
+}
+
+func (a *App) SetUserConfig(config model.UserConfig) (err error) {
+	err = a.db.SetUserConfig(config)
+	return err
+}
+
+func (a *App) GetUserConfig() (c model.UserConfig, err error) {
+	c, err = a.db.GetUserConfig()
+	return c, err
+}
+
+func (a *App) AddCard(card model.DataCard) (err error) {
+	err = a.db.AddCard(card)
+	return err
+}
+
+func (a *App) GetCard(localID int) (card model.DataCard, err error) {
+	card, err = a.db.GetCard(localID)
+	return card, err
+}
+
+func (a *App) GetAllCards() (cards []model.DataCard, err error) {
+	cards, err = a.db.GetAllCards()
+	return cards, err
+}
+
+func (a *App) DeleteCard(localID int) (err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	item, err := a.GetCard(localID)
+	if err != nil {
+		return err
+	}
+
+	err = a.db.DeleteCred(localID)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		err = a.HTTPService.DeleteCard(c.AccessToken, item.ExternalID)
+		if err != nil {
+			logger.Error("goroutine delete:", err)
+		}
+	}()
+
+	return err
+}
+
+func (a *App) AddCred(cred model.DataCred) (err error) {
+	err = a.db.AddCred(cred)
+	return err
+}
+
+func (a *App) GetCred(localID int) (card model.DataCred, err error) {
+	card, err = a.db.GetCred(localID)
+	return card, err
+}
+
+func (a *App) GetAllCreds() (cards []model.DataCred, err error) {
+	cards, err = a.db.GetAllCreds()
+	return cards, err
+}
+
+func (a *App) DeleteCred(localID int) (err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	item, err := a.GetCred(localID)
+	if err != nil {
+		return err
+	}
+
+	err = a.db.DeleteCred(localID)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		err = a.HTTPService.DeleteCred(c.AccessToken, item.ExternalID)
+		if err != nil {
+			logger.Error("goroutine delete:", err)
+		}
+	}()
+
+	return err
+}
+
+func (a *App) AddText(text model.DataText) (err error) {
+	err = a.db.AddText(text)
+	return err
+}
+
+func (a *App) GetText(localID int) (text model.DataText, err error) {
+	text, err = a.db.GetText(localID)
+	return text, err
+}
+
+func (a *App) GetAllTexts() (texts []model.DataText, err error) {
+	texts, err = a.db.GetAllTexts()
+	return texts, err
+}
+
+func (a *App) DeleteText(localID int) (err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	item, err := a.GetText(localID)
+	if err != nil {
+		return err
+	}
+
+	err = a.db.DeleteText(localID)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		err = a.HTTPService.DeleteText(c.AccessToken, item.ExternalID)
+		if err != nil {
+			logger.Error("goroutine delete:", err)
+		}
+	}()
+	return err
+}
+
+func (a *App) AddFile(file model.DataFile) (err error) {
+	err = a.db.AddFile(file)
+	return err
+}
+
+func (a *App) GetFile(localID int) (file model.DataFile, err error) {
+	file, err = a.db.GetFile(localID)
+	return file, err
+}
+
+func (a *App) GetAllFiles() (files []model.DataFile, err error) {
+	files, err = a.db.GetAllFiles()
+	return files, err
+}
+
+func (a *App) DeleteFile(localID int) (err error) {
+	err = a.db.DeleteFile(localID)
+	return err
 }

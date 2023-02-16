@@ -26,9 +26,11 @@ func (d *DataFile) Validate() error {
 	if strings.TrimSpace(d.Path) == "" {
 		return ErrDataFilePathEmpty
 	}
+
 	if strings.TrimSpace(d.Title) == "" {
 		return ErrDataFileTitleEmpty
 	}
+
 	if d.UserID == 0 {
 		return ErrDataFileUserIDEmpty
 	}

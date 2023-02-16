@@ -27,7 +27,7 @@ func New(path string) (repo *StorageFiles, err error) {
 	return repo, nil
 }
 
-// SaveFile сохраняет файл пользователя
+// SaveFile сохраняет файл пользователя.
 func (repo StorageFiles) SaveFile(src io.ReadCloser) (filePath string, err error) {
 	filePath, err = repo.getPath()
 	if err != nil {
@@ -48,7 +48,7 @@ func (repo StorageFiles) SaveFile(src io.ReadCloser) (filePath string, err error
 	return filePath, err
 }
 
-// DeleteFile удаляет файл прользователя
+// DeleteFile удаляет файл прользователя.
 func (repo StorageFiles) DeleteFile(filePath string) (err error) {
 	if filePath == "" {
 		return nil
@@ -62,12 +62,12 @@ func (repo StorageFiles) DeleteFile(filePath string) (err error) {
 	return nil
 }
 
-// GetFile возвращает файл пользователя
+// GetFile возвращает файл пользователя.
 func (repo StorageFiles) GetFile(filePath string) (fileReader io.ReadCloser, err error) {
 	return os.Open(filePath)
 }
 
-// Close закрывает файловый репозиторий
+// Close закрывает файловый репозиторий.
 func (repo StorageFiles) Close() error {
 	return nil
 }

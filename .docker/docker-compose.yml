@@ -5,9 +5,9 @@ services:
         image: postgres:15-alpine
         restart: always
         environment:
-            POSTGRES_USER: "root"
-            POSTGRES_PASSWORD: "12345"
-            POSTGRES_DB: "gophkeeper"
+            POSTGRES_USER: ${POSTGRES_USER}
+            POSTGRES_PASSWORD: ${POSTGRES_USER}
+            POSTGRES_DB: ${POSTGRES_USER}
         volumes:
             - ./data:/var/lib/postgresql/data
         ports:

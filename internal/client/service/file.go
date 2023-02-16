@@ -1,21 +1,22 @@
-package file
+package service
 
 import (
 	"crypto/rand"
 	"errors"
-	"github.com/rainset/gophkeeper/pkg/logger"
 	"io"
 	"io/fs"
 	"math/big"
 	"os"
 	"path/filepath"
+
+	"github.com/rainset/gophkeeper/pkg/logger"
 )
 
-type StorageFiles struct {
+type FileService struct {
 	path string
 }
 
-func New(path string) (repo *StorageFiles, err error) {
+func New(path string) (repo *FileService, err error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		err := os.Mkdir(path, os.ModePerm)
 		if err != nil {
@@ -23,33 +24,34 @@ func New(path string) (repo *StorageFiles, err error) {
 		}
 	}
 
-	repo = &StorageFiles{path: path}
+	repo = &FileService{path: path}
 
 	return repo, nil
 }
 
 // SaveFile сохраняет файл пользователя
-func (repo StorageFiles) SaveFile(src io.ReadCloser, ext string) (filePath string, err error) {
+
+func (repo FileService) SaveFile(src io.ReadCloser, ext string) (filePath string, err error) {
 	filePath, err = repo.getPath()
 	if err != nil {
 		logger.Error("getPath() ", err)
+
 		return "", err
 	}
 
-	filePath = filePath + ext
+	filePath += ext
 
 	filePathAbs, err := filepath.Abs(filePath)
 	if err != nil {
 		logger.Error("filepath.Abs ", err)
+
 		return filePath, err
 	}
-
-	logger.Info(filePath)
-	logger.Info(filePathAbs)
 
 	dst, err := os.Create(filePathAbs)
 	if err != nil {
 		logger.Error("os.Create ", err)
+
 		return "", err
 	}
 	defer dst.Close()
@@ -57,14 +59,16 @@ func (repo StorageFiles) SaveFile(src io.ReadCloser, ext string) (filePath strin
 	_, err = io.Copy(dst, src)
 	if err != nil {
 		logger.Error("io.Copy ", err)
+
 		return "", err
 	}
 
 	return filePathAbs, err
 }
 
-// DeleteFile удаляет файл прользователя
-func (repo StorageFiles) DeleteFile(filePath string) (err error) {
+// DeleteFile - удаляет файл пользователя
+
+func (repo FileService) DeleteFile(filePath string) (err error) {
 	if filePath == "" {
 		return nil
 	}
@@ -77,24 +81,24 @@ func (repo StorageFiles) DeleteFile(filePath string) (err error) {
 	return nil
 }
 
-// GetFile возвращает файл пользователя
-func (repo StorageFiles) GetFile(filePath string) (fileReader io.ReadCloser, err error) {
+// GetFile - возвращает файл пользователя
+
+func (repo FileService) GetFile(filePath string) (fileReader io.ReadCloser, err error) {
 	return os.Open(filePath)
 }
 
-// Close закрывает файловый репозиторий
-func (repo StorageFiles) Close() error {
+// Close - закрывает файловый репозиторий
+
+func (repo FileService) Close() error {
 	return nil
 }
 
-func (repo StorageFiles) getPath() (string, error) {
+func (repo FileService) getPath() (string, error) {
 	for {
 		bytes, err := generateRandomBytes(32)
 		if err != nil {
 			return "", err
 		}
-
-		logger.Info(bytes)
 
 		targetDir := filepath.Join(repo.path, string(bytes[0:2]), string(bytes[2:4]), string(bytes[4:6]), string(bytes[6:]))
 		targetFile := filepath.Join(targetDir, string(bytes[6:]))

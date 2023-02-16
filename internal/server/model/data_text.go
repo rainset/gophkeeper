@@ -25,11 +25,14 @@ func (d *DataText) Validate() error {
 	if strings.TrimSpace(d.Title) == "" {
 		return ErrDataTextTitleEmpty
 	}
+
 	if strings.TrimSpace(d.Text) == "" {
 		return ErrDataTextEmpty
 	}
+
 	if d.UserID == 0 {
 		return ErrDataTextUserIDEmpty
 	}
+
 	return nil
 }
