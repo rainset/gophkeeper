@@ -4,6 +4,7 @@ import (
 	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
+	"math/rand"
 )
 
 func Md5(text string) string {
@@ -19,4 +20,16 @@ func Sha256(text string) string {
 	strHash := hex.EncodeToString(h.Sum(nil))
 
 	return strHash
+}
+
+// GenerateRandom generates slice of random bytes with specified size.
+// GenerateRandom генерирует случайную последовательность байт длинной size
+func GenerateRandom(size int) ([]byte, error) {
+	// генерируем случайную последовательность байт
+	b := make([]byte, size)
+	_, err := rand.Read(b)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
 }

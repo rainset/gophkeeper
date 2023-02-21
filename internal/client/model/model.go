@@ -18,6 +18,7 @@ type UserConfig struct {
 	Password     string
 	AccessToken  string
 	RefreshToken string
+	SignKey      string
 }
 
 type DataCard struct {

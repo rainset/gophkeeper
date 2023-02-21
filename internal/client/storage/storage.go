@@ -66,14 +66,14 @@ func (b *Base) GetUserConfig() (c model.UserConfig, err error) {
 	return c, err
 }
 
-func (b *Base) AddCard(card model.DataCard) (err error) {
+func (b *Base) AddCard(card *model.DataCard) (err error) {
 	if b.user == "" {
 		return ErrUserNotInitialized
 	}
 
-	err = b.db.From(b.user).Save(&card)
+	err = b.db.From(b.user).Save(card)
 	if err != nil {
-		logger.Error()
+		logger.Error(err)
 	}
 
 	return err
@@ -122,12 +122,12 @@ func (b *Base) DeleteCard(localID int) (err error) {
 	return err
 }
 
-func (b *Base) AddCred(cred model.DataCred) (err error) {
+func (b *Base) AddCred(cred *model.DataCred) (err error) {
 	if b.user == "" {
 		return ErrUserNotInitialized
 	}
 
-	err = b.db.From(b.user).Save(&cred)
+	err = b.db.From(b.user).Save(cred)
 	if err != nil {
 		logger.Error()
 	}
@@ -167,12 +167,12 @@ func (b *Base) DeleteCred(localID int) (err error) {
 	return err
 }
 
-func (b *Base) AddText(text model.DataText) (err error) {
+func (b *Base) AddText(text *model.DataText) (err error) {
 	if b.user == "" {
 		return ErrUserNotInitialized
 	}
 
-	err = b.db.From(b.user).Save(&text)
+	err = b.db.From(b.user).Save(text)
 
 	return err
 }
@@ -209,12 +209,12 @@ func (b *Base) DeleteText(localID int) (err error) {
 	return err
 }
 
-func (b *Base) AddFile(file model.DataFile) (err error) {
+func (b *Base) AddFile(file *model.DataFile) (err error) {
 	if b.user == "" {
 		return ErrUserNotInitialized
 	}
 
-	err = b.db.From(b.user).Save(&file)
+	err = b.db.From(b.user).Save(file)
 
 	return err
 }

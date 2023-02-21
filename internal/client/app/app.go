@@ -1,11 +1,14 @@
 package app
 
 import (
-	"context"
+	"embed"
+	_ "embed"
 	"errors"
+	"github.com/rainset/gophkeeper/pkg/crypt"
 	"image/color"
 	"log"
 	"net/url"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -24,9 +27,13 @@ import (
 	"github.com/rainset/gophkeeper/internal/client/service/channel"
 	"github.com/rainset/gophkeeper/internal/client/storage"
 	"github.com/rainset/gophkeeper/internal/client/ui"
+	smodel "github.com/rainset/gophkeeper/internal/server/model"
 	"github.com/rainset/gophkeeper/pkg/hash"
 	"github.com/rainset/gophkeeper/pkg/logger"
 )
+
+//go:embed icons/*
+var icons embed.FS
 
 type App struct {
 	window      fyne.Window
@@ -37,13 +44,22 @@ type App struct {
 	Channels    channel.Channels
 }
 
-func New(ctx context.Context, cfg *config.Config) *App {
+func New(cfg *config.Config) *App {
 	fyneApp := app.New()
 	w := fyneApp.NewWindow("Gophkeeper")
 	w.Resize(fyne.NewSize(500, 700))
 
 	w.SetIcon(theme.FyneLogo())
 
+	// создаем директорию для файлов пользователя
+	if _, err := os.Stat(cfg.ClientFolder); errors.Is(err, os.ErrNotExist) {
+		err := os.MkdirAll(cfg.ClientFolder, 0700)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// подключение бд клиента
 	db, err := storage.New(filepath.Join(cfg.ClientFolder, "gophkeeper.db"))
 	if err != nil {
 		log.Fatal(err)
@@ -75,6 +91,7 @@ func (a *App) Run() {
 }
 
 func (a *App) pageAuth() {
+
 	authForm := a.authForm()
 	regForm := a.regForm()
 
@@ -83,7 +100,13 @@ func (a *App) pageAuth() {
 		container.NewTabItem("Регистрация", container.New(layout.NewPaddedLayout(), regForm)),
 	)
 
-	a.window.SetContent(tabs)
+	logoIcon, err := icons.ReadFile("icons/logo.png")
+	if err != nil {
+		logger.Error(err)
+	}
+	logoResource := canvas.NewImageFromResource(fyne.NewStaticResource("logo", logoIcon))
+	logoResource.SetMinSize(fyne.NewSize(500, 150))
+	a.window.SetContent(container.NewVBox(logoResource, tabs))
 }
 
 func (a *App) pageMain(dataType ui.DataType) {
@@ -98,7 +121,6 @@ func (a *App) pageMain(dataType ui.DataType) {
 			select {
 			case v := <-a.Channels.SyncProgressBar:
 				syncBar.SetValue(v)
-				logger.Info(v)
 			case quit := <-a.Channels.SyncProgressBarQuit:
 				if quit {
 					syncBar.Hide()
@@ -241,6 +263,8 @@ func (a *App) pageEdit(localID int, dataType ui.DataType) {
 				}
 
 				if err != nil {
+
+					logger.Error("delete:", err)
 					dialog.ShowError(errors.New("ошибка при удалении записи"), a.window)
 
 					return
@@ -327,6 +351,15 @@ func (a *App) authForm() *widget.Form {
 		c.RefreshToken = tokens.RefreshToken
 		c.AccessToken = tokens.AccessToken
 
+		signKey, err := a.HTTPService.GetSignKey(tokens.AccessToken, login.Text, pass.Text)
+		if err != nil {
+			dialog.ShowError(errors.New("ошибка получения ключа подписи"), a.window)
+
+			return
+		}
+
+		c.SignKey = signKey
+
 		err = a.SetUserConfig(c)
 		if err != nil {
 			dialog.ShowError(errors.New("ошибка записи настроек хранилища"), a.window)
@@ -335,6 +368,7 @@ func (a *App) authForm() *widget.Form {
 		}
 
 		a.pageMain(ui.TypeCard)
+		a.SyncData()
 	}
 
 	return authForm
@@ -395,6 +429,18 @@ func (a *App) regForm() *widget.Form {
 		c.RefreshToken = tokens.RefreshToken
 		c.AccessToken = tokens.AccessToken
 
+		signKey, err := a.HTTPService.GetSignKey(tokens.AccessToken, login.Text, pass.Text)
+		if err != nil {
+			dialog.ShowError(errors.New("ошибка получения ключа подписи"), a.window)
+
+			return
+		}
+
+		c.SignKey = signKey
+
+		logger.Info("signKey: ", signKey)
+		logger.Info(c)
+
 		err = a.SetUserConfig(c)
 		if err != nil {
 			dialog.ShowError(errors.New("ошибка записи настроек хранилища"), a.window)
@@ -403,6 +449,7 @@ func (a *App) regForm() *widget.Form {
 		}
 
 		a.pageMain(ui.TypeCard)
+		a.SyncData()
 	}
 
 	return regForm
@@ -485,11 +532,13 @@ func (a *App) addCardForm(localID int) *fyne.Container {
 
 		if localID > 0 {
 			cardData.LocalID = item.LocalID
+			cardData.ExternalID = item.ExternalID
 		}
 
-		err = a.AddCard(cardData)
+		err = a.AddCard(&cardData, false)
 
 		if err != nil {
+			logger.Error(err)
 			dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
 
 			return
@@ -565,9 +614,10 @@ func (a *App) addCredForm(localID int) *fyne.Container {
 
 		if localID > 0 {
 			credData.LocalID = item.LocalID
+			credData.ExternalID = item.ExternalID
 		}
 
-		err = a.AddCred(credData)
+		err = a.AddCred(&credData, false)
 
 		if err != nil {
 			dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
@@ -637,9 +687,10 @@ func (a *App) addTextForm(localID int) *fyne.Container {
 
 		if localID > 0 {
 			textData.LocalID = item.LocalID
+			textData.ExternalID = item.ExternalID
 		}
 
-		err = a.AddText(textData)
+		err = a.AddText(&textData, false)
 
 		if err != nil {
 			dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
@@ -737,9 +788,10 @@ func (a *App) addFileForm(localID int) *fyne.Container {
 
 			if localID > 0 {
 				saveItem.LocalID = item.LocalID
+				saveItem.ExternalID = item.ExternalID
 			}
 
-			err = a.AddFile(saveItem)
+			err = a.AddFile(&saveItem, false)
 			if err != nil {
 				logger.Error("AddFile: ", err)
 				dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
@@ -924,6 +976,602 @@ func (a *App) fileList() *fyne.Container {
 	return container.New(layout.NewPaddedLayout(), scroll, noItems)
 }
 
+func (a *App) SetUser(login string) {
+	a.db.SetUser(login)
+}
+
+func (a *App) SetUserConfig(config model.UserConfig) (err error) {
+	err = a.db.SetUserConfig(config)
+	return err
+}
+
+func (a *App) GetUserConfig() (c model.UserConfig, err error) {
+	c, err = a.db.GetUserConfig()
+	return c, err
+}
+
+func (a *App) AddCard(card *model.DataCard, encrypted bool) (err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	if !encrypted {
+		sKey := crypt.DecodeBase64(c.SignKey)
+		encNumber, err := crypt.Encrypt([]byte(card.Number), sKey)
+		if err != nil {
+			return err
+		}
+
+		encDate, err := crypt.Encrypt([]byte(card.Date), sKey)
+		if err != nil {
+			return err
+		}
+
+		encCvv, err := crypt.Encrypt([]byte(card.Cvv), sKey)
+		if err != nil {
+			return err
+		}
+
+		encMeta, err := crypt.Encrypt([]byte(card.Meta), sKey)
+		if err != nil {
+			return err
+		}
+
+		card.Number = crypt.EncodeBase64(encNumber)
+		card.Date = crypt.EncodeBase64(encDate)
+		card.Cvv = crypt.EncodeBase64(encCvv)
+		card.Meta = crypt.EncodeBase64(encMeta)
+	}
+
+	err = a.db.AddCard(card)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		reqBody := smodel.DataCard{
+			ID:        card.ExternalID,
+			Title:     card.Title,
+			Number:    card.Number,
+			Date:      card.Date,
+			Cvv:       card.Cvv,
+			Meta:      card.Meta,
+			UpdatedAt: card.UpdatedAt,
+		}
+
+		id, err := a.HTTPService.AddCard(c.AccessToken, reqBody)
+		if err != nil {
+			logger.Error("goroutine add:", err)
+		}
+
+		card.ExternalID = id
+		err = a.db.AddCard(card)
+		if err != nil {
+			logger.Error("err --  ", err)
+			return
+		}
+
+	}()
+
+	return err
+}
+
+func (a *App) GetCard(localID int) (card model.DataCard, err error) {
+
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return card, err
+	}
+
+	card, err = a.db.GetCard(localID)
+	if err != nil {
+		return card, err
+	}
+
+	sKey := crypt.DecodeBase64(c.SignKey)
+
+	decNumber, err := crypt.Decrypt(crypt.DecodeBase64(card.Number), sKey)
+	if err != nil {
+		return card, err
+	}
+
+	decDate, err := crypt.Decrypt(crypt.DecodeBase64(card.Date), sKey)
+	if err != nil {
+		return card, err
+	}
+
+	decCvv, err := crypt.Decrypt(crypt.DecodeBase64(card.Cvv), sKey)
+	if err != nil {
+		return card, err
+	}
+
+	decMeta, err := crypt.Decrypt(crypt.DecodeBase64(card.Meta), sKey)
+	if err != nil {
+		return card, err
+	}
+
+	card.Number = string(decNumber)
+	card.Date = string(decDate)
+	card.Cvv = string(decCvv)
+	card.Meta = string(decMeta)
+
+	return card, err
+}
+
+func (a *App) GetAllCards() (cards []model.DataCard, err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return cards, err
+	}
+	sKey := crypt.DecodeBase64(c.SignKey)
+
+	cardEnc, err := a.db.GetAllCards()
+
+	for _, v := range cardEnc {
+
+		decNumber, err := crypt.Decrypt(crypt.DecodeBase64(v.Number), sKey)
+		if err != nil {
+			return cards, err
+		}
+
+		decDate, err := crypt.Decrypt(crypt.DecodeBase64(v.Date), sKey)
+		if err != nil {
+			return cards, err
+		}
+
+		decCvv, err := crypt.Decrypt(crypt.DecodeBase64(v.Cvv), sKey)
+		if err != nil {
+			return cards, err
+		}
+
+		decMeta, err := crypt.Decrypt(crypt.DecodeBase64(v.Meta), sKey)
+		if err != nil {
+			return cards, err
+		}
+
+		v.Number = string(decNumber)
+		v.Date = string(decDate)
+		v.Cvv = string(decCvv)
+		v.Meta = string(decMeta)
+
+		cards = append(cards, v)
+	}
+
+	return cards, err
+}
+
+func (a *App) DeleteCard(localID int) (err error) {
+
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	item, err := a.GetCard(localID)
+	if err != nil {
+		return err
+	}
+
+	err = a.db.DeleteCard(localID)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		err = a.HTTPService.DeleteCard(c.AccessToken, item.ExternalID)
+		if err != nil {
+			logger.Error("goroutine delete:", err)
+		}
+	}()
+
+	return err
+}
+
+func (a *App) AddCred(cred *model.DataCred, encrypted bool) (err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	if !encrypted {
+		sKey := crypt.DecodeBase64(c.SignKey)
+		encUsername, err := crypt.Encrypt([]byte(cred.Username), sKey)
+		if err != nil {
+			return err
+		}
+
+		encPass, err := crypt.Encrypt([]byte(cred.Password), sKey)
+		if err != nil {
+			return err
+		}
+
+		encMeta, err := crypt.Encrypt([]byte(cred.Meta), sKey)
+		if err != nil {
+			return err
+		}
+
+		cred.Username = crypt.EncodeBase64(encUsername)
+		cred.Password = crypt.EncodeBase64(encPass)
+		cred.Meta = crypt.EncodeBase64(encMeta)
+	}
+
+	err = a.db.AddCred(cred)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		c, err := a.GetUserConfig()
+		if err != nil {
+			return
+		}
+
+		reqBody := smodel.DataCred{
+			ID:        cred.ExternalID,
+			Title:     cred.Title,
+			Username:  cred.Username,
+			Password:  cred.Password,
+			Meta:      cred.Meta,
+			UpdatedAt: cred.UpdatedAt,
+		}
+
+		id, err := a.HTTPService.AddCred(c.AccessToken, reqBody)
+		if err != nil {
+			logger.Error("goroutine add:", err)
+		}
+
+		cred.ExternalID = id
+		err = a.db.AddCred(cred)
+		if err != nil {
+			return
+		}
+	}()
+
+	return err
+}
+
+func (a *App) GetCred(localID int) (cred model.DataCred, err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return cred, err
+	}
+
+	cred, err = a.db.GetCred(localID)
+	if err != nil {
+		return cred, err
+	}
+
+	sKey := crypt.DecodeBase64(c.SignKey)
+
+	decUsername, err := crypt.Decrypt(crypt.DecodeBase64(cred.Username), sKey)
+	if err != nil {
+		return cred, err
+	}
+
+	decPass, err := crypt.Decrypt(crypt.DecodeBase64(cred.Password), sKey)
+	if err != nil {
+		return cred, err
+	}
+
+	decMeta, err := crypt.Decrypt(crypt.DecodeBase64(cred.Meta), sKey)
+	if err != nil {
+		return cred, err
+	}
+
+	cred.Username = string(decUsername)
+	cred.Password = string(decPass)
+	cred.Meta = string(decMeta)
+
+	return cred, err
+}
+
+func (a *App) GetAllCreds() (creds []model.DataCred, err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return creds, err
+	}
+	sKey := crypt.DecodeBase64(c.SignKey)
+
+	credsEnc, err := a.db.GetAllCreds()
+
+	for _, v := range credsEnc {
+
+		decUsername, err := crypt.Decrypt(crypt.DecodeBase64(v.Username), sKey)
+		if err != nil {
+			return creds, err
+		}
+
+		decPass, err := crypt.Decrypt(crypt.DecodeBase64(v.Password), sKey)
+		if err != nil {
+			return creds, err
+		}
+
+		decMeta, err := crypt.Decrypt(crypt.DecodeBase64(v.Meta), sKey)
+		if err != nil {
+			return creds, err
+		}
+
+		v.Username = string(decUsername)
+		v.Password = string(decPass)
+		v.Meta = string(decMeta)
+
+		creds = append(creds, v)
+	}
+
+	return creds, err
+}
+
+func (a *App) DeleteCred(localID int) (err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	item, err := a.GetCred(localID)
+	if err != nil {
+		return err
+	}
+
+	err = a.db.DeleteCred(localID)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		err = a.HTTPService.DeleteCred(c.AccessToken, item.ExternalID)
+		if err != nil {
+			logger.Error("goroutine delete:", err)
+		}
+	}()
+
+	return err
+}
+
+func (a *App) AddText(text *model.DataText, encrypted bool) (err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	if !encrypted {
+		sKey := crypt.DecodeBase64(c.SignKey)
+		encText, err := crypt.Encrypt([]byte(text.Text), sKey)
+		if err != nil {
+			return err
+		}
+
+		encMeta, err := crypt.Encrypt([]byte(text.Meta), sKey)
+		if err != nil {
+			return err
+		}
+
+		text.Text = crypt.EncodeBase64(encText)
+		text.Meta = crypt.EncodeBase64(encMeta)
+	}
+
+	err = a.db.AddText(text)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		c, err := a.GetUserConfig()
+		if err != nil {
+			return
+		}
+
+		reqBody := smodel.DataText{
+			ID:        text.ExternalID,
+			Title:     text.Title,
+			Text:      text.Text,
+			Meta:      text.Meta,
+			UpdatedAt: text.UpdatedAt,
+		}
+
+		id, err := a.HTTPService.AddText(c.AccessToken, reqBody)
+		if err != nil {
+			logger.Error("goroutine add:", err)
+		}
+
+		text.ExternalID = id
+		err = a.db.AddText(text)
+		if err != nil {
+			return
+		}
+	}()
+
+	return err
+}
+
+func (a *App) GetText(localID int) (text model.DataText, err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return text, err
+	}
+
+	text, err = a.db.GetText(localID)
+	if err != nil {
+		return text, err
+	}
+
+	sKey := crypt.DecodeBase64(c.SignKey)
+
+	decText, err := crypt.Decrypt(crypt.DecodeBase64(text.Text), sKey)
+	if err != nil {
+		return text, err
+	}
+
+	decMeta, err := crypt.Decrypt(crypt.DecodeBase64(text.Meta), sKey)
+	if err != nil {
+		return text, err
+	}
+
+	text.Text = string(decText)
+	text.Meta = string(decMeta)
+
+	return text, err
+}
+
+func (a *App) GetAllTexts() (texts []model.DataText, err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return texts, err
+	}
+	sKey := crypt.DecodeBase64(c.SignKey)
+
+	textsEnc, err := a.db.GetAllTexts()
+
+	for _, v := range textsEnc {
+
+		decText, err := crypt.Decrypt(crypt.DecodeBase64(v.Text), sKey)
+		if err != nil {
+			return texts, err
+		}
+
+		decMeta, err := crypt.Decrypt(crypt.DecodeBase64(v.Meta), sKey)
+		if err != nil {
+			return texts, err
+		}
+
+		v.Text = string(decText)
+		v.Meta = string(decMeta)
+
+		texts = append(texts, v)
+	}
+
+	return texts, err
+}
+
+func (a *App) DeleteText(localID int) (err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	item, err := a.GetText(localID)
+	if err != nil {
+		return err
+	}
+
+	err = a.db.DeleteText(localID)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		err = a.HTTPService.DeleteText(c.AccessToken, item.ExternalID)
+		if err != nil {
+			logger.Error("goroutine delete:", err)
+		}
+	}()
+	return err
+}
+
+func (a *App) AddFile(file *model.DataFile, encrypted bool) (err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	if !encrypted {
+		sKey := crypt.DecodeBase64(c.SignKey)
+
+		encMeta, err := crypt.Encrypt([]byte(file.Meta), sKey)
+		if err != nil {
+			return err
+		}
+
+		file.Meta = crypt.EncodeBase64(encMeta)
+	}
+
+	err = a.db.AddFile(file)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		c, err := a.GetUserConfig()
+		if err != nil {
+			return
+		}
+
+		reqBody := smodel.DataFile{
+			ID:        file.ExternalID,
+			Title:     file.Title,
+			Filename:  file.Filename,
+			Path:      file.Path,
+			Meta:      file.Meta,
+			UpdatedAt: file.UpdatedAt,
+		}
+
+		id, err := a.HTTPService.AddFile(c.AccessToken, reqBody)
+		if err != nil {
+			logger.Error("goroutine add:", err)
+		}
+
+		file.ExternalID = id
+		err = a.db.AddFile(file)
+		if err != nil {
+			return
+		}
+	}()
+
+	return err
+}
+
+func (a *App) GetFile(localID int) (file model.DataFile, err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return file, err
+	}
+
+	file, err = a.db.GetFile(localID)
+	if err != nil {
+		return file, err
+	}
+
+	sKey := crypt.DecodeBase64(c.SignKey)
+
+	decMeta, err := crypt.Decrypt(crypt.DecodeBase64(file.Meta), sKey)
+	if err != nil {
+		return file, err
+	}
+
+	file.Meta = string(decMeta)
+
+	return file, err
+}
+
+func (a *App) GetAllFiles() (files []model.DataFile, err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return files, err
+	}
+	sKey := crypt.DecodeBase64(c.SignKey)
+
+	filesEnc, err := a.db.GetAllFiles()
+
+	for _, v := range filesEnc {
+
+		decMeta, err := crypt.Decrypt(crypt.DecodeBase64(v.Meta), sKey)
+		if err != nil {
+			return files, err
+		}
+
+		v.Meta = string(decMeta)
+
+		files = append(files, v)
+	}
+
+	return files, err
+}
+
+func (a *App) DeleteFile(localID int) (err error) {
+	err = a.db.DeleteFile(localID)
+	return err
+}
+
 func (a *App) SyncData() {
 	c, err := a.GetUserConfig()
 	if err != nil {
@@ -970,27 +1618,27 @@ func (a *App) SyncData() {
 
 	a.Channels.SyncProgressBar <- 0.25
 
-	err = a.SyncCreds(tokens.AccessToken)
-	if err != nil {
-		dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
-		return
-	}
+	//err = a.SyncCreds(tokens.AccessToken)
+	//if err != nil {
+	//	dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
+	//	return
+	//}
 
 	a.Channels.SyncProgressBar <- 0.50
 
-	err = a.SyncTexts(tokens.AccessToken)
-	if err != nil {
-		dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
-		return
-	}
+	//err = a.SyncTexts(tokens.AccessToken)
+	//if err != nil {
+	//	dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
+	//	return
+	//}
 
 	a.Channels.SyncProgressBar <- 0.75
 
-	err = a.SyncFiles(tokens.AccessToken)
-	if err != nil {
-		dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
-		return
-	}
+	//err = a.SyncFiles(tokens.AccessToken)
+	//if err != nil {
+	//	dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
+	//	return
+	//}
 
 	a.Channels.SyncProgressBar <- 1.0
 
@@ -998,7 +1646,7 @@ func (a *App) SyncData() {
 }
 
 func (a *App) SyncCards(accessToken string) (err error) {
-	cardsMap := make(map[int]model.DataCard)
+	cardsMap := make(map[int]*model.DataCard)
 
 	cards, err := a.GetAllCards()
 	if err != nil {
@@ -1007,7 +1655,7 @@ func (a *App) SyncCards(accessToken string) (err error) {
 	}
 
 	for _, v := range cards {
-		cardsMap[v.ExternalID] = v
+		cardsMap[v.ExternalID] = &v
 	}
 
 	getCards, err := a.HTTPService.GetCardList(accessToken)
@@ -1019,7 +1667,6 @@ func (a *App) SyncCards(accessToken string) (err error) {
 	// создаем записи в бд клиента
 	for _, v := range getCards {
 		if val, ok := cardsMap[v.ExternalID]; ok {
-
 			// если дата на сервере новее обновим локальные данные
 			if val.UpdatedAt.Unix() < v.UpdatedAt.Unix() {
 				updateCard := model.DataCard{
@@ -1032,15 +1679,22 @@ func (a *App) SyncCards(accessToken string) (err error) {
 					Meta:       v.Meta,
 					UpdatedAt:  v.UpdatedAt,
 				}
-				errUpdate := a.AddCard(updateCard)
+				errUpdate := a.AddCard(&updateCard, true)
 				if errUpdate != nil {
-					logger.Error("SyncCards - errUpdate: ", errUpdate)
+					logger.Error("SyncCards - errUpdate local: ", errUpdate)
 				}
 
 				logger.Info("updateCard:", updateCard)
+			} else {
+				// обновим данные и отправим обновления на сервер
+				errUpdate := a.AddCard(val, false)
+				if errUpdate != nil {
+					logger.Error("SyncCards - errUpdate server: ", errUpdate)
+				}
 			}
 		} else {
 			newCard := model.DataCard{
+				//LocalID:    val.LocalID,
 				ExternalID: v.ExternalID,
 				Title:      v.Title,
 				Number:     v.Number,
@@ -1050,30 +1704,27 @@ func (a *App) SyncCards(accessToken string) (err error) {
 				UpdatedAt:  v.UpdatedAt,
 			}
 
-			errAdd := a.AddCard(newCard)
+			errAdd := a.AddCard(&newCard, true)
 			if errAdd != nil {
 				logger.Error("SyncCards - errAdd: ", errAdd)
 			}
 
-			logger.Info("newCard:", newCard)
 		}
 	}
-
-	logger.Info("getCards: ", getCards)
 	return nil
 }
 
 func (a *App) SyncCreds(accessToken string) (err error) {
-	credsMap := make(map[int]model.DataCred)
+	credsMap := make(map[int]*model.DataCred)
 
 	creds, err := a.GetAllCreds()
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SyncCreds GetAllCreds err: ", err)
 		return err
 	}
 
 	for _, v := range creds {
-		credsMap[v.ExternalID] = v
+		credsMap[v.ExternalID] = &v
 	}
 
 	getCreds, err := a.HTTPService.GetCredList(accessToken)
@@ -1097,12 +1748,18 @@ func (a *App) SyncCreds(accessToken string) (err error) {
 					Meta:       v.Meta,
 					UpdatedAt:  v.UpdatedAt,
 				}
-				errUpdate := a.AddCred(updateCred)
+				errUpdate := a.AddCred(&updateCred, true)
 				if errUpdate != nil {
 					logger.Error("SyncCreds - errUpdate: ", errUpdate)
 				}
 
-				logger.Info("updateCred:", updateCred)
+			} else {
+				// обновим данные и отправим обновления на сервер
+				errUpdate := a.AddCred(val, false)
+				if errUpdate != nil {
+					logger.Error("SyncCreds - errUpdate server: ", errUpdate)
+				}
+
 			}
 		} else {
 			newCred := model.DataCred{
@@ -1114,35 +1771,32 @@ func (a *App) SyncCreds(accessToken string) (err error) {
 				UpdatedAt:  v.UpdatedAt,
 			}
 
-			errAdd := a.AddCred(newCred)
+			errAdd := a.AddCred(&newCred, true)
 			if errAdd != nil {
 				logger.Error("SyncCreds - errAdd: ", errAdd)
 			}
 
-			logger.Info("newCred:", newCred)
 		}
 	}
-
-	logger.Info("getCreds: ", getCreds)
 	return nil
 }
 
 func (a *App) SyncTexts(accessToken string) (err error) {
-	textsMap := make(map[int]model.DataText)
+	textsMap := make(map[int]*model.DataText)
 
 	texts, err := a.GetAllTexts()
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SyncTexts - GetAllTexts: ", err)
 		return err
 	}
 
 	for _, v := range texts {
-		textsMap[v.ExternalID] = v
+		textsMap[v.ExternalID] = &v
 	}
 
 	getTexts, err := a.HTTPService.GetTextList(accessToken)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SyncTexts - HTTPService.GetTextList: ", err)
 		return err
 	}
 
@@ -1160,12 +1814,17 @@ func (a *App) SyncTexts(accessToken string) (err error) {
 					Meta:       v.Meta,
 					UpdatedAt:  v.UpdatedAt,
 				}
-				errUpdate := a.AddText(updateText)
+				errUpdate := a.AddText(&updateText, true)
 				if errUpdate != nil {
-					logger.Error("SyncTexts - errUpdate: ", errUpdate)
+					logger.Error("SyncTexts - errUpdate local: ", errUpdate)
 				}
 
-				logger.Info("updateCred:", updateText)
+			} else {
+				// обновим данные и отправим обновления на сервер
+				errUpdate := a.AddText(val, false)
+				if errUpdate != nil {
+					logger.Error("SyncTexts - errUpdate server: ", errUpdate)
+				}
 			}
 		} else {
 			newText := model.DataText{
@@ -1176,11 +1835,10 @@ func (a *App) SyncTexts(accessToken string) (err error) {
 				UpdatedAt:  v.UpdatedAt,
 			}
 
-			errAdd := a.AddText(newText)
+			errAdd := a.AddText(&newText, true)
 			if errAdd != nil {
 				logger.Error("SyncTexts - errAdd: ", errAdd)
 			}
-			logger.Info("newText:", newText)
 		}
 	}
 
@@ -1188,21 +1846,21 @@ func (a *App) SyncTexts(accessToken string) (err error) {
 }
 
 func (a *App) SyncFiles(accessToken string) (err error) {
-	filesMap := make(map[int]model.DataFile)
+	filesMap := make(map[int]*model.DataFile)
 
 	files, err := a.GetAllFiles()
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SyncFiles - GetAllFiles: ", err)
 		return err
 	}
 
 	for _, v := range files {
-		filesMap[v.ExternalID] = v
+		filesMap[v.ExternalID] = &v
 	}
 
 	getFiles, err := a.HTTPService.GetFileList(accessToken)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SyncFiles - HTTPService.GetFileList: ", err)
 		return err
 	}
 
@@ -1214,16 +1872,14 @@ func (a *App) SyncFiles(accessToken string) (err error) {
 			if val.UpdatedAt.Unix() < v.UpdatedAt.Unix() {
 				dFile, errDF := a.HTTPService.DownloadFile(v.Path)
 				if errDF != nil {
-					logger.Error("downloadFile: ", v.Filename)
-
+					logger.Error("SyncFiles - HTTPService.DownloadFile: ", errDF)
 					continue
 				}
 
 				ext := filepath.Ext(v.Filename)
 				filePath, errFP := a.FileService.SaveFile(dFile, ext)
 				if errFP != nil {
-					logger.Error("fileService.SaveFile: ", errFP)
-
+					logger.Error("SyncFiles - FileService.SaveFile: ", errFP)
 					continue
 				}
 
@@ -1238,22 +1894,26 @@ func (a *App) SyncFiles(accessToken string) (err error) {
 					Meta:       v.Meta,
 					UpdatedAt:  v.UpdatedAt,
 				}
-				errUpdate := a.AddFile(updateFile)
+				errUpdate := a.AddFile(&updateFile, true)
 				if errUpdate != nil {
-					logger.Error("syncFile - errUpdate: ", errUpdate)
+					logger.Error("SyncFiles - errUpdate: ", errUpdate)
 				}
-
-				logger.Info("updateFile:", updateFile)
 
 				errD := a.FileService.DeleteFile(val.Path)
 				if errD != nil {
 					continue
 				}
+			} else {
+				// обновим данные и отправим обновления на сервер
+				errUpdate := a.AddFile(val, false)
+				if errUpdate != nil {
+					logger.Error("SyncFiles - errUpdate server: ", errUpdate)
+				}
 			}
 		} else {
 			dFile, errDF := a.HTTPService.DownloadFile(v.Path)
 			if errDF != nil {
-				logger.Error("downloadFile: ", v.Filename)
+				logger.Error("SyncFiles - downloadFile: ", v.Filename)
 
 				continue
 			}
@@ -1261,7 +1921,7 @@ func (a *App) SyncFiles(accessToken string) (err error) {
 			ext := filepath.Ext(v.Filename)
 			filePath, errFP := a.FileService.SaveFile(dFile, ext)
 			if errFP != nil {
-				logger.Error("fileService.SaveFile: ", errFP)
+				logger.Error("SyncFiles - fileService.SaveFile: ", errFP)
 
 				continue
 			}
@@ -1277,169 +1937,12 @@ func (a *App) SyncFiles(accessToken string) (err error) {
 				UpdatedAt:  v.UpdatedAt,
 			}
 
-			errAdd := a.AddFile(newFile)
+			errAdd := a.AddFile(&newFile, true)
 			if errAdd != nil {
 				logger.Error("syncFile - errAdd: ", errAdd)
 			}
-			logger.Info("newFile:", newFile)
 		}
 	}
 
 	return nil
-}
-
-func (a *App) SetUser(login string) {
-	a.db.SetUser(login)
-}
-
-func (a *App) SetUserConfig(config model.UserConfig) (err error) {
-	err = a.db.SetUserConfig(config)
-	return err
-}
-
-func (a *App) GetUserConfig() (c model.UserConfig, err error) {
-	c, err = a.db.GetUserConfig()
-	return c, err
-}
-
-func (a *App) AddCard(card model.DataCard) (err error) {
-	err = a.db.AddCard(card)
-	return err
-}
-
-func (a *App) GetCard(localID int) (card model.DataCard, err error) {
-	card, err = a.db.GetCard(localID)
-	return card, err
-}
-
-func (a *App) GetAllCards() (cards []model.DataCard, err error) {
-	cards, err = a.db.GetAllCards()
-	return cards, err
-}
-
-func (a *App) DeleteCard(localID int) (err error) {
-	c, err := a.GetUserConfig()
-	if err != nil {
-		return err
-	}
-
-	item, err := a.GetCard(localID)
-	if err != nil {
-		return err
-	}
-
-	err = a.db.DeleteCred(localID)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		err = a.HTTPService.DeleteCard(c.AccessToken, item.ExternalID)
-		if err != nil {
-			logger.Error("goroutine delete:", err)
-		}
-	}()
-
-	return err
-}
-
-func (a *App) AddCred(cred model.DataCred) (err error) {
-	err = a.db.AddCred(cred)
-	return err
-}
-
-func (a *App) GetCred(localID int) (card model.DataCred, err error) {
-	card, err = a.db.GetCred(localID)
-	return card, err
-}
-
-func (a *App) GetAllCreds() (cards []model.DataCred, err error) {
-	cards, err = a.db.GetAllCreds()
-	return cards, err
-}
-
-func (a *App) DeleteCred(localID int) (err error) {
-	c, err := a.GetUserConfig()
-	if err != nil {
-		return err
-	}
-
-	item, err := a.GetCred(localID)
-	if err != nil {
-		return err
-	}
-
-	err = a.db.DeleteCred(localID)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		err = a.HTTPService.DeleteCred(c.AccessToken, item.ExternalID)
-		if err != nil {
-			logger.Error("goroutine delete:", err)
-		}
-	}()
-
-	return err
-}
-
-func (a *App) AddText(text model.DataText) (err error) {
-	err = a.db.AddText(text)
-	return err
-}
-
-func (a *App) GetText(localID int) (text model.DataText, err error) {
-	text, err = a.db.GetText(localID)
-	return text, err
-}
-
-func (a *App) GetAllTexts() (texts []model.DataText, err error) {
-	texts, err = a.db.GetAllTexts()
-	return texts, err
-}
-
-func (a *App) DeleteText(localID int) (err error) {
-	c, err := a.GetUserConfig()
-	if err != nil {
-		return err
-	}
-
-	item, err := a.GetText(localID)
-	if err != nil {
-		return err
-	}
-
-	err = a.db.DeleteText(localID)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		err = a.HTTPService.DeleteText(c.AccessToken, item.ExternalID)
-		if err != nil {
-			logger.Error("goroutine delete:", err)
-		}
-	}()
-	return err
-}
-
-func (a *App) AddFile(file model.DataFile) (err error) {
-	err = a.db.AddFile(file)
-	return err
-}
-
-func (a *App) GetFile(localID int) (file model.DataFile, err error) {
-	file, err = a.db.GetFile(localID)
-	return file, err
-}
-
-func (a *App) GetAllFiles() (files []model.DataFile, err error) {
-	files, err = a.db.GetAllFiles()
-	return files, err
-}
-
-func (a *App) DeleteFile(localID int) (err error) {
-	err = a.db.DeleteFile(localID)
-	return err
 }

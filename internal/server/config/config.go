@@ -12,7 +12,7 @@ type Config struct {
 	DatabaseDsn        string `env:"DATABASE_DSN" envDefault:"postgres://root:12345@localhost:5432/gophkeeper" json:"databaseDsn"` //nolint:lll
 	FileStorage        string `env:"FILE_STORAGE" envDefault:"_file_storage" json:"fileStorage"`
 	JWTSecretKey       string `env:"JWT_SECRET_KEY" envDefault:"secret_key" json:"jwtSecretKey"`
-	JWTAccessTokenTTL  string `env:"JWT_ACCESS_TOKEN_TTL" envDefault:"2h" json:"jwtAccessTokenTTL"`
+	JWTAccessTokenTTL  string `env:"JWT_ACCESS_TOKEN_TTL" envDefault:"10h" json:"jwtAccessTokenTTL"`
 	JWTRefreshTokenTTL string `env:"JWT_REFRESH_TOKEN_TTL" envDefault:"720h" json:"jwtRefreshTokenTTL"`
 	EnableTLS          bool   `env:"ENABLE_TLS" envDefault:"false" json:"enableTLS"`
 }

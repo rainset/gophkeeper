@@ -18,7 +18,7 @@ type FileService struct {
 
 func New(path string) (repo *FileService, err error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		err := os.Mkdir(path, os.ModePerm)
+		err := os.Mkdir(path, 0750)
 		if err != nil {
 			return nil, err
 		}
@@ -105,7 +105,7 @@ func (repo FileService) getPath() (string, error) {
 
 		if _, err := os.Stat(targetFile); errors.Is(err, os.ErrNotExist) {
 			if _, err := os.Stat(targetDir); errors.Is(err, os.ErrNotExist) {
-				err := os.MkdirAll(targetDir, os.ModePerm)
+				err := os.MkdirAll(targetDir, 0750)
 				if err != nil {
 					return "", nil
 				}

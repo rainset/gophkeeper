@@ -2,7 +2,6 @@
 .SILENT:
 .DEFAULT_GOAL := help
 
-include .env
 PROJECTNAME=$(shell basename "$(PWD)")
 GOBASE=$(shell pwd)
 GOBIN=$(GOBASE)/bin
@@ -10,11 +9,11 @@ GOBIN=$(GOBASE)/bin
 
 ## migrate-up: goose up migrations
 migrate-up:
-	goose -dir=./migrations postgres $(DATABASE_URI) up
+	goose -dir=./migrations postgres "postgres://root:12345@localhost:5432/gophkeeper" up
 
 ## migrate-down: goose down migrations
 migrate-down:
-	goose -dir=./migrations postgres $(DATABASE_URI) down
+	goose -dir=./migrations postgres "postgres://root:12345@localhost:5432/gophkeeper" down
 
 ## test: run tests
 test:
@@ -37,16 +36,21 @@ build-server:
 	go build -o $(GOBIN)/server cmd/server/main.go
 
 ## build-client: build client desktop application binary
-
 build-client:
 	CGO_ENABLED=1 go build -o $(GOBIN)/client cmd/client/main.go
 
+## ld-flags-example: set version to application
+ld-flags-example:
+	CGO_ENABLED=1 go build -ldflags "-X main.BuildVersion=v1.0.1 -X 'main.BuildDate=$(date)'" -o $(GOBIN)/client cmd/client/main.go
 
 ## compile: Compiling for every OS and Platform https://developer.fyne.io/started/cross-compiling
 compile:
 	echo "Compiling for every OS and Platform"
 	CGO_ENABLED=1 $(GOPATH)/bin/fyne-cross linux -arch=* ./cmd/client/main.go
 
+## cert: Generate TLS certificates
+cert:
+	go run cmd/cert/main.go
 
 help: Makefile
 	@echo

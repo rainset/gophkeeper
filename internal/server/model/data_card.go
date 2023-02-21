@@ -30,7 +30,7 @@ func (d *DataCard) Validate() error {
 		return ErrDataCardTitleEmpty
 	}
 
-	if d.UserID > 0 {
+	if d.UserID == 0 {
 		return ErrDataCardUserIDEmpty
 	}
 

@@ -34,7 +34,7 @@ func NewServer(cfg *config.Config, handler http.Handler) *Server {
 }
 
 func (s *Server) Run() error {
-	return s.httpServer.ListenAndServe()
+	return s.httpServer.ListenAndServeTLS("./cert/cert.pem", "./cert/private.key")
 }
 
 func (s *Server) Stop(ctx context.Context) error {
@@ -43,13 +43,16 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // Run Инициализация приложения.
 func Run(cfg *config.Config) {
-	store := storage.New(cfg.DatabaseDsn)
+
+	ctx := context.Background()
+
+	store := storage.New(ctx, cfg.DatabaseDsn)
 	storeFile, err := file.New(cfg.FileStorage)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	newService := service.New(store, *storeFile, cfg)
+	newService := service.New(store, storeFile, cfg)
 	newHandler := handler.NewHandler(newService)
 
 	// HTTP Server
@@ -58,12 +61,12 @@ func Run(cfg *config.Config) {
 	// удаление по времени
 	go func() {
 		for {
-			err := newService.ClearExpiredRefreshTokens()
+			err := newService.ClearExpiredRefreshTokens(ctx)
 			if err != nil {
 				logger.Error(err)
 			}
 
-			time.Sleep(time.Second * 60)
+			time.Sleep(60 * time.Second)
 		}
 	}()
 
@@ -81,7 +84,7 @@ func Run(cfg *config.Config) {
 
 	// The context is used to inform the server it has 5 seconds to finish
 	// the request it is currently handling
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	if err := srv.Stop(ctx); err != nil {

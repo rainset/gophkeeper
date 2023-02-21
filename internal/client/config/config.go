@@ -9,7 +9,7 @@ import (
 
 type Config struct {
 	ServerAddress  string `env:"SERVER_ADDRESS" envDefault:"localhost:8080" json:"serverAddress"`
-	ServerProtocol string `env:"SERVER_PROTOCOL" envDefault:"http" json:"serverProtocol"`
+	ServerProtocol string `env:"SERVER_PROTOCOL" envDefault:"https" json:"serverProtocol"`
 	ClientFolder   string `env:"CLIENT_FOLDER" envDefault:"gophkeeper_files" json:"clientFolder"`
 }
 

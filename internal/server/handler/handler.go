@@ -33,6 +33,7 @@ func (h *Handler) Init() *gin.Engine {
 	r.POST("/sign-in", h.SignIn)
 
 	r.POST("/refresh-token", h.RefreshToken)
+	r.POST("/sign-key", h.SignKey)
 
 	store := r.Group("/store", h.authMiddleware)
 	{
@@ -75,7 +76,7 @@ func (h *Handler) SignIn(c *gin.Context) {
 		return
 	}
 
-	token, err := h.service.SignIn(rb)
+	token, err := h.service.SignIn(c, rb)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusUnauthorized)
@@ -95,7 +96,7 @@ func (h *Handler) SignUp(c *gin.Context) {
 		return
 	}
 
-	token, err := h.service.SignUp(rb)
+	token, err := h.service.SignUp(c, rb)
 	if err != nil {
 		if errors.Is(err, storage.ErrorUserAlreadyExists) {
 			c.AbortWithStatus(http.StatusConflict)
@@ -121,7 +122,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 		return
 	}
 
-	tokens, err := h.service.GetRefreshToken(rb.Token)
+	tokens, err := h.service.GetRefreshToken(c, rb.Token)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -130,6 +131,28 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, tokens)
+}
+
+func (h *Handler) SignKey(c *gin.Context) {
+	var rb model.User
+	err := c.BindJSON(&rb)
+
+	if err != nil {
+		logger.Error(err)
+		c.AbortWithStatus(http.StatusBadRequest)
+
+		return
+	}
+
+	signKey, err := h.service.GetSignKey(c, rb.Login, rb.Password)
+	if err != nil {
+		logger.Error(err)
+		c.AbortWithStatus(http.StatusUnauthorized)
+
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"sign_key": signKey})
 }
 
 func (h *Handler) SaveCard(c *gin.Context) {
@@ -154,7 +177,7 @@ func (h *Handler) SaveCard(c *gin.Context) {
 
 	rb.UserID = userID
 
-	err = h.service.SaveCard(rb)
+	id, err := h.service.SaveCard(c, rb)
 	if err != nil {
 		if errors.Is(err, storage.ErrorRowAlreadyExists) {
 			c.AbortWithStatus(http.StatusConflict)
@@ -168,7 +191,7 @@ func (h *Handler) SaveCard(c *gin.Context) {
 		return
 	}
 
-	c.Status(http.StatusCreated)
+	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
 func (h *Handler) DeleteCard(c *gin.Context) {
@@ -191,7 +214,7 @@ func (h *Handler) DeleteCard(c *gin.Context) {
 		return
 	}
 
-	err = h.service.DeleteCard(rb.ID, userID)
+	err = h.service.DeleteCard(c, rb.ID, userID)
 	if err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
 
@@ -219,7 +242,7 @@ func (h *Handler) FindCard(c *gin.Context) {
 		return
 	}
 
-	card, err := h.service.FindCard(rb.ID, userID)
+	card, err := h.service.FindCard(c, rb.ID, userID)
 	if err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
 
@@ -240,7 +263,7 @@ func (h *Handler) FindAllCards(c *gin.Context) {
 		return
 	}
 
-	cards, err := h.service.FindAllCards(userID)
+	cards, err := h.service.FindAllCards(c, userID)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -278,7 +301,7 @@ func (h *Handler) SaveCred(c *gin.Context) {
 
 	rb.UserID = userID
 
-	err = h.service.SaveCred(rb)
+	err = h.service.SaveCred(c, rb)
 	if err != nil {
 		if errors.Is(err, storage.ErrorRowAlreadyExists) {
 			c.AbortWithStatus(http.StatusConflict)
@@ -314,7 +337,7 @@ func (h *Handler) DeleteCred(c *gin.Context) {
 		return
 	}
 
-	err = h.service.DeleteCred(rb.ID, userID)
+	err = h.service.DeleteCred(c, rb.ID, userID)
 	if err != nil {
 		c.AbortWithStatus(http.StatusBadRequest)
 
@@ -343,7 +366,7 @@ func (h *Handler) FindCred(c *gin.Context) {
 		return
 	}
 
-	cred, err := h.service.FindCred(rb.ID, userID)
+	cred, err := h.service.FindCred(c, rb.ID, userID)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -365,7 +388,7 @@ func (h *Handler) FindAllCreds(c *gin.Context) {
 		return
 	}
 
-	creds, err := h.service.FindAllCreds(userID)
+	creds, err := h.service.FindAllCreds(c, userID)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -403,7 +426,7 @@ func (h *Handler) SaveText(c *gin.Context) {
 
 	rb.UserID = userID
 
-	err = h.service.SaveText(rb)
+	err = h.service.SaveText(c, rb)
 	if err != nil {
 		if errors.Is(err, storage.ErrorRowAlreadyExists) {
 			c.AbortWithStatus(http.StatusConflict)
@@ -439,7 +462,7 @@ func (h *Handler) DeleteText(c *gin.Context) {
 		return
 	}
 
-	err = h.service.DeleteText(rb.ID, userID)
+	err = h.service.DeleteText(c, rb.ID, userID)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -469,7 +492,7 @@ func (h *Handler) FindText(c *gin.Context) {
 		return
 	}
 
-	card, err := h.service.FindText(rb.ID, userID)
+	card, err := h.service.FindText(c, rb.ID, userID)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -491,7 +514,7 @@ func (h *Handler) FindAllTexts(c *gin.Context) {
 		return
 	}
 
-	texts, err := h.service.FindAllTexts(userID)
+	texts, err := h.service.FindAllTexts(c, userID)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -555,7 +578,7 @@ func (h *Handler) SaveFile(c *gin.Context) {
 	file.Path = filePath
 	file.Filename = formFile.Filename
 
-	err = h.service.SaveFile(file)
+	err = h.service.SaveFile(c, file)
 	if err != nil {
 		logger.Error("open upload file error", err)
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -583,7 +606,7 @@ func (h *Handler) DeleteFile(c *gin.Context) {
 		return
 	}
 
-	err = h.service.DeleteFile(rb.ID, userID)
+	err = h.service.DeleteFile(c, rb.ID, userID)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -612,7 +635,7 @@ func (h *Handler) FindFile(c *gin.Context) {
 		return
 	}
 
-	file, err := h.service.FindFile(rb.ID, userID)
+	file, err := h.service.FindFile(c, rb.ID, userID)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusBadRequest)
@@ -634,7 +657,7 @@ func (h *Handler) FindAllFiles(c *gin.Context) {
 		return
 	}
 
-	files, err := h.service.FindAllFiles(userID)
+	files, err := h.service.FindAllFiles(c, userID)
 	if err != nil {
 		logger.Error(err)
 		c.AbortWithStatus(http.StatusBadRequest)
