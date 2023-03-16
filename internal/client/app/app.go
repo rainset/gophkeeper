@@ -125,7 +125,7 @@ func (a *App) pageMain(dataType ui.DataType) {
 				if quit {
 					syncBar.Hide()
 					tabs.Show()
-					a.pageMain(ui.TypeCard)
+					a.pageMain(dataType)
 				}
 			}
 		}
@@ -143,7 +143,6 @@ func (a *App) pageMain(dataType ui.DataType) {
 		case ui.TabFile.String():
 			dataType = ui.TypeFile
 		}
-		logger.Info("Добавить ", dataType)
 		a.pageAdd(0, dataType)
 	})
 
@@ -203,7 +202,6 @@ func (a *App) pageAdd(localID int, dataType ui.DataType) {
 
 	tasksBar := container.NewHBox(
 		widget.NewButtonWithIcon("Назад", theme.NavigateBackIcon(), func() {
-			logger.Info("back button event ", dataType)
 			a.pageMain(dataType)
 		}),
 		layout.NewSpacer(),
@@ -243,6 +241,8 @@ func (a *App) pageAdd(localID int, dataType ui.DataType) {
 }
 
 func (a *App) pageEdit(localID int, dataType ui.DataType) {
+
+	log.Println(a.GetAllFiles())
 	logger.Infof("pageEdit %d %s", localID, dataType)
 
 	var content *fyne.Container
@@ -264,7 +264,7 @@ func (a *App) pageEdit(localID int, dataType ui.DataType) {
 
 				if err != nil {
 
-					logger.Error("delete:", err)
+					logger.Error("delete:", err, dataType, localID)
 					dialog.ShowError(errors.New("ошибка при удалении записи"), a.window)
 
 					return
@@ -368,7 +368,7 @@ func (a *App) authForm() *widget.Form {
 		}
 
 		a.pageMain(ui.TypeCard)
-		a.SyncData()
+		//a.SyncData()
 	}
 
 	return authForm
@@ -438,9 +438,6 @@ func (a *App) regForm() *widget.Form {
 
 		c.SignKey = signKey
 
-		logger.Info("signKey: ", signKey)
-		logger.Info(c)
-
 		err = a.SetUserConfig(c)
 		if err != nil {
 			dialog.ShowError(errors.New("ошибка записи настроек хранилища"), a.window)
@@ -449,7 +446,7 @@ func (a *App) regForm() *widget.Form {
 		}
 
 		a.pageMain(ui.TypeCard)
-		a.SyncData()
+		//a.SyncData()
 	}
 
 	return regForm
@@ -769,40 +766,43 @@ func (a *App) addFileForm(localID int) *fyne.Container {
 	}
 	addForm.SubmitText = "Сохранить"
 	addForm.OnSubmit = func() {
+
+		saveItem := model.DataFile{
+			Title:     title.Text,
+			Filename:  item.Filename,
+			Path:      item.Path,
+			Ext:       item.Ext,
+			Meta:      meta.Text,
+			UpdatedAt: time.Now(),
+		}
+
 		if tempFile.exists {
 			filePath, err := a.FileService.SaveFile(tempFile.r, tempFile.ext)
 			if err != nil {
 				dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
-
 				return
 			}
 
-			saveItem := model.DataFile{
-				Title:     title.Text,
-				Filename:  tempFile.filename,
-				Path:      filePath,
-				Ext:       tempFile.r.URI().Extension(),
-				Meta:      meta.Text,
-				UpdatedAt: time.Now(),
-			}
-
-			if localID > 0 {
-				saveItem.LocalID = item.LocalID
-				saveItem.ExternalID = item.ExternalID
-			}
-
-			err = a.AddFile(&saveItem, false)
-			if err != nil {
-				logger.Error("AddFile: ", err)
-				dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
-				return
-			}
+			saveItem.Path = filePath
+			saveItem.Ext = tempFile.r.URI().Extension()
 
 			err = a.FileService.DeleteFile(item.Path)
 			if err != nil {
 				dialog.ShowError(errors.New("ошибка удаления старой версии файла"), a.window)
 				return
 			}
+		}
+
+		if localID > 0 {
+			saveItem.LocalID = item.LocalID
+			saveItem.ExternalID = item.ExternalID
+		}
+
+		err = a.AddFile(&saveItem, false)
+		if err != nil {
+			logger.Error("AddFile: ", err)
+			dialog.ShowError(errors.New("ошибка сохранения данных"), a.window)
+			return
 		}
 
 		a.pageMain(ui.TypeFile)
@@ -818,7 +818,8 @@ func (a *App) addFileForm(localID int) *fyne.Container {
 		link := widget.NewHyperlinkWithStyle("Просмотр файла", u, fyne.TextAlignCenter, fyne.TextStyle{Bold: true, Monospace: true})
 		linkContainer := container.NewVBox(widget.NewLabel(""), canvas.NewLine(color.Black), link)
 
-		return container.NewVBox(addForm, linkContainer, container.NewCenter(widget.NewLabel(item.Path)))
+		//return container.NewVBox(addForm, linkContainer, container.NewCenter(widget.NewLabel(item.Path)))
+		return container.NewVBox(addForm, linkContainer)
 	}
 
 	return container.NewVBox(addForm)
@@ -1029,31 +1030,6 @@ func (a *App) AddCard(card *model.DataCard, encrypted bool) (err error) {
 		return err
 	}
 
-	go func() {
-		reqBody := smodel.DataCard{
-			ID:        card.ExternalID,
-			Title:     card.Title,
-			Number:    card.Number,
-			Date:      card.Date,
-			Cvv:       card.Cvv,
-			Meta:      card.Meta,
-			UpdatedAt: card.UpdatedAt,
-		}
-
-		id, err := a.HTTPService.AddCard(c.AccessToken, reqBody)
-		if err != nil {
-			logger.Error("goroutine add:", err)
-		}
-
-		card.ExternalID = id
-		err = a.db.AddCard(card)
-		if err != nil {
-			logger.Error("err --  ", err)
-			return
-		}
-
-	}()
-
 	return err
 }
 
@@ -1109,7 +1085,6 @@ func (a *App) GetAllCards() (cards []model.DataCard, err error) {
 	cardEnc, err := a.db.GetAllCards()
 
 	for _, v := range cardEnc {
-
 		decNumber, err := crypt.Decrypt(crypt.DecodeBase64(v.Number), sKey)
 		if err != nil {
 			return cards, err
@@ -1134,7 +1109,6 @@ func (a *App) GetAllCards() (cards []model.DataCard, err error) {
 		v.Date = string(decDate)
 		v.Cvv = string(decCvv)
 		v.Meta = string(decMeta)
-
 		cards = append(cards, v)
 	}
 
@@ -1200,33 +1174,6 @@ func (a *App) AddCred(cred *model.DataCred, encrypted bool) (err error) {
 	if err != nil {
 		return err
 	}
-
-	go func() {
-		c, err := a.GetUserConfig()
-		if err != nil {
-			return
-		}
-
-		reqBody := smodel.DataCred{
-			ID:        cred.ExternalID,
-			Title:     cred.Title,
-			Username:  cred.Username,
-			Password:  cred.Password,
-			Meta:      cred.Meta,
-			UpdatedAt: cred.UpdatedAt,
-		}
-
-		id, err := a.HTTPService.AddCred(c.AccessToken, reqBody)
-		if err != nil {
-			logger.Error("goroutine add:", err)
-		}
-
-		cred.ExternalID = id
-		err = a.db.AddCred(cred)
-		if err != nil {
-			return
-		}
-	}()
 
 	return err
 }
@@ -1355,32 +1302,6 @@ func (a *App) AddText(text *model.DataText, encrypted bool) (err error) {
 		return err
 	}
 
-	go func() {
-		c, err := a.GetUserConfig()
-		if err != nil {
-			return
-		}
-
-		reqBody := smodel.DataText{
-			ID:        text.ExternalID,
-			Title:     text.Title,
-			Text:      text.Text,
-			Meta:      text.Meta,
-			UpdatedAt: text.UpdatedAt,
-		}
-
-		id, err := a.HTTPService.AddText(c.AccessToken, reqBody)
-		if err != nil {
-			logger.Error("goroutine add:", err)
-		}
-
-		text.ExternalID = id
-		err = a.db.AddText(text)
-		if err != nil {
-			return
-		}
-	}()
-
 	return err
 }
 
@@ -1490,33 +1411,6 @@ func (a *App) AddFile(file *model.DataFile, encrypted bool) (err error) {
 		return err
 	}
 
-	go func() {
-		c, err := a.GetUserConfig()
-		if err != nil {
-			return
-		}
-
-		reqBody := smodel.DataFile{
-			ID:        file.ExternalID,
-			Title:     file.Title,
-			Filename:  file.Filename,
-			Path:      file.Path,
-			Meta:      file.Meta,
-			UpdatedAt: file.UpdatedAt,
-		}
-
-		id, err := a.HTTPService.AddFile(c.AccessToken, reqBody)
-		if err != nil {
-			logger.Error("goroutine add:", err)
-		}
-
-		file.ExternalID = id
-		err = a.db.AddFile(file)
-		if err != nil {
-			return
-		}
-	}()
-
 	return err
 }
 
@@ -1568,7 +1462,32 @@ func (a *App) GetAllFiles() (files []model.DataFile, err error) {
 }
 
 func (a *App) DeleteFile(localID int) (err error) {
+	c, err := a.GetUserConfig()
+	if err != nil {
+		return err
+	}
+
+	item, err := a.GetFile(localID)
+	if err != nil {
+		return err
+	}
+
 	err = a.db.DeleteFile(localID)
+	if err != nil {
+		return err
+	}
+
+	err = a.FileService.DeleteFile(item.Path)
+	if err != nil {
+		return err
+	}
+
+	go func() {
+		err = a.HTTPService.DeleteFile(c.AccessToken, item.ExternalID)
+		if err != nil {
+			logger.Error("goroutine delete:", err)
+		}
+	}()
 	return err
 }
 
@@ -1579,8 +1498,6 @@ func (a *App) SyncData() {
 
 		return
 	}
-
-	logger.Info(c)
 
 	tokens, err := a.HTTPService.PostRefreshToken(c.RefreshToken)
 	if err != nil {
@@ -1618,27 +1535,27 @@ func (a *App) SyncData() {
 
 	a.Channels.SyncProgressBar <- 0.25
 
-	//err = a.SyncCreds(tokens.AccessToken)
-	//if err != nil {
-	//	dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
-	//	return
-	//}
+	err = a.SyncCreds(tokens.AccessToken)
+	if err != nil {
+		dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
+		return
+	}
 
 	a.Channels.SyncProgressBar <- 0.50
 
-	//err = a.SyncTexts(tokens.AccessToken)
-	//if err != nil {
-	//	dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
-	//	return
-	//}
+	err = a.SyncTexts(tokens.AccessToken)
+	if err != nil {
+		dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
+		return
+	}
 
 	a.Channels.SyncProgressBar <- 0.75
 
-	//err = a.SyncFiles(tokens.AccessToken)
-	//if err != nil {
-	//	dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
-	//	return
-	//}
+	err = a.SyncFiles(tokens.AccessToken)
+	if err != nil {
+		dialog.ShowError(errors.New("ошибка запроса списка с сервера"), a.window)
+		return
+	}
 
 	a.Channels.SyncProgressBar <- 1.0
 
@@ -1646,11 +1563,15 @@ func (a *App) SyncData() {
 }
 
 func (a *App) SyncCards(accessToken string) (err error) {
-	cardsMap := make(map[int]*model.DataCard)
-
-	cards, err := a.GetAllCards()
+	c, err := a.GetUserConfig()
 	if err != nil {
-		logger.Error(err)
+		return err
+	}
+	cardsMap := make(map[int]*model.DataCard)
+	getCardsMap := make(map[int]*model.DataCard)
+
+	cards, err := a.db.GetAllCards()
+	if err != nil {
 		return err
 	}
 
@@ -1660,66 +1581,80 @@ func (a *App) SyncCards(accessToken string) (err error) {
 
 	getCards, err := a.HTTPService.GetCardList(accessToken)
 	if err != nil {
-		logger.Error(err)
 		return err
+	}
+
+	for _, v := range getCards {
+		getCardsMap[v.ExternalID] = v
 	}
 
 	// создаем записи в бд клиента
 	for _, v := range getCards {
-		if val, ok := cardsMap[v.ExternalID]; ok {
-			// если дата на сервере новее обновим локальные данные
-			if val.UpdatedAt.Unix() < v.UpdatedAt.Unix() {
-				updateCard := model.DataCard{
-					LocalID:    val.LocalID,
-					ExternalID: v.ExternalID,
-					Title:      v.Title,
-					Number:     v.Number,
-					Date:       v.Date,
-					Cvv:        v.Cvv,
-					Meta:       v.Meta,
-					UpdatedAt:  v.UpdatedAt,
-				}
-				errUpdate := a.AddCard(&updateCard, true)
-				if errUpdate != nil {
-					logger.Error("SyncCards - errUpdate local: ", errUpdate)
-				}
 
-				logger.Info("updateCard:", updateCard)
-			} else {
-				// обновим данные и отправим обновления на сервер
-				errUpdate := a.AddCard(val, false)
-				if errUpdate != nil {
-					logger.Error("SyncCards - errUpdate server: ", errUpdate)
-				}
+		val, ok := cardsMap[v.ExternalID]
+		if ok {
+			if val.UpdatedAt.Unix() > v.UpdatedAt.Unix() {
+				continue
 			}
-		} else {
-			newCard := model.DataCard{
-				//LocalID:    val.LocalID,
-				ExternalID: v.ExternalID,
-				Title:      v.Title,
-				Number:     v.Number,
-				Date:       v.Date,
-				Cvv:        v.Cvv,
-				Meta:       v.Meta,
-				UpdatedAt:  v.UpdatedAt,
-			}
+		}
 
-			errAdd := a.AddCard(&newCard, true)
-			if errAdd != nil {
-				logger.Error("SyncCards - errAdd: ", errAdd)
-			}
+		updateCard := v
+		if ok {
+			updateCard.LocalID = val.LocalID
+		}
 
+		errUpdate := a.AddCard(updateCard, true)
+		if errUpdate != nil {
+			logger.Error("SyncCards - errUpdate local: ", errUpdate)
+		}
+
+	}
+
+	// создаем записи в бд сервера
+	for _, v := range cards {
+
+		if val, ok := getCardsMap[v.ExternalID]; ok {
+			if val.UpdatedAt.Unix() > v.UpdatedAt.Unix() {
+				continue
+			}
+		}
+
+		// отправим на сервер
+		reqBody := smodel.DataCard{
+			ID:        v.ExternalID,
+			Title:     v.Title,
+			Number:    v.Number,
+			Date:      v.Date,
+			Cvv:       v.Cvv,
+			Meta:      v.Meta,
+			UpdatedAt: v.UpdatedAt,
+		}
+
+		id, err := a.HTTPService.AddCard(c.AccessToken, reqBody)
+		if err != nil {
+			logger.Error("goroutine add:", err)
+		}
+		v.ExternalID = id
+		err = a.db.AddCard(&v)
+		if err != nil {
+			logger.Error("err --  ", err)
+			//return
 		}
 	}
+
 	return nil
 }
 
 func (a *App) SyncCreds(accessToken string) (err error) {
-	credsMap := make(map[int]*model.DataCred)
-
-	creds, err := a.GetAllCreds()
+	c, err := a.GetUserConfig()
 	if err != nil {
-		logger.Error("SyncCreds GetAllCreds err: ", err)
+		return err
+	}
+	credsMap := make(map[int]*model.DataCred)
+	getCredsMap := make(map[int]*model.DataCred)
+
+	creds, err := a.db.GetAllCreds()
+	if err != nil {
 		return err
 	}
 
@@ -1729,37 +1664,24 @@ func (a *App) SyncCreds(accessToken string) (err error) {
 
 	getCreds, err := a.HTTPService.GetCredList(accessToken)
 	if err != nil {
-		logger.Error(err)
 		return err
+	}
+
+	for _, v := range getCreds {
+		getCredsMap[v.ExternalID] = v
 	}
 
 	// создаем записи в бд клиента
 	for _, v := range getCreds {
 		if val, ok := credsMap[v.ExternalID]; ok {
-
 			// если дата на сервере новее обновим локальные данные
 			if val.UpdatedAt.Unix() < v.UpdatedAt.Unix() {
-				updateCred := model.DataCred{
-					LocalID:    val.LocalID,
-					ExternalID: v.ExternalID,
-					Title:      v.Title,
-					Username:   v.Username,
-					Password:   v.Password,
-					Meta:       v.Meta,
-					UpdatedAt:  v.UpdatedAt,
-				}
-				errUpdate := a.AddCred(&updateCred, true)
+				updateCred := v
+				updateCred.LocalID = val.LocalID
+				errUpdate := a.AddCred(updateCred, true)
 				if errUpdate != nil {
-					logger.Error("SyncCreds - errUpdate: ", errUpdate)
+					logger.Error(errUpdate)
 				}
-
-			} else {
-				// обновим данные и отправим обновления на сервер
-				errUpdate := a.AddCred(val, false)
-				if errUpdate != nil {
-					logger.Error("SyncCreds - errUpdate server: ", errUpdate)
-				}
-
 			}
 		} else {
 			newCred := model.DataCred{
@@ -1773,20 +1695,56 @@ func (a *App) SyncCreds(accessToken string) (err error) {
 
 			errAdd := a.AddCred(&newCred, true)
 			if errAdd != nil {
-				logger.Error("SyncCreds - errAdd: ", errAdd)
+				logger.Error(errAdd)
 			}
 
 		}
 	}
+
+	// создаем записи в бд сервера
+	for _, v := range creds {
+
+		if val, ok := getCredsMap[v.ExternalID]; ok {
+			if val.UpdatedAt.Unix() > v.UpdatedAt.Unix() {
+				continue
+			}
+		}
+
+		// отправим на сервер
+		reqBody := smodel.DataCred{
+			ID:        v.ExternalID,
+			Title:     v.Title,
+			Username:  v.Username,
+			Password:  v.Password,
+			Meta:      v.Meta,
+			UpdatedAt: v.UpdatedAt,
+		}
+
+		id, err := a.HTTPService.AddCred(c.AccessToken, reqBody)
+		if err != nil {
+			logger.Error("goroutine add:", err)
+		}
+		v.ExternalID = id
+		err = a.db.AddCred(&v)
+		if err != nil {
+			logger.Error("err --  ", err)
+			//return
+		}
+	}
+
 	return nil
 }
 
 func (a *App) SyncTexts(accessToken string) (err error) {
-	textsMap := make(map[int]*model.DataText)
-
-	texts, err := a.GetAllTexts()
+	c, err := a.GetUserConfig()
 	if err != nil {
-		logger.Error("SyncTexts - GetAllTexts: ", err)
+		return err
+	}
+	textsMap := make(map[int]*model.DataText)
+	getTextsMap := make(map[int]*model.DataText)
+
+	texts, err := a.db.GetAllTexts()
+	if err != nil {
 		return err
 	}
 
@@ -1796,34 +1754,23 @@ func (a *App) SyncTexts(accessToken string) (err error) {
 
 	getTexts, err := a.HTTPService.GetTextList(accessToken)
 	if err != nil {
-		logger.Error("SyncTexts - HTTPService.GetTextList: ", err)
 		return err
+	}
+
+	for _, v := range getTexts {
+		getTextsMap[v.ExternalID] = v
 	}
 
 	// создаем записи в бд клиента
 	for _, v := range getTexts {
 		if val, ok := textsMap[v.ExternalID]; ok {
-
 			// если дата на сервере новее обновим локальные данные
 			if val.UpdatedAt.Unix() < v.UpdatedAt.Unix() {
-				updateText := model.DataText{
-					LocalID:    val.LocalID,
-					ExternalID: v.ExternalID,
-					Title:      v.Title,
-					Text:       v.Text,
-					Meta:       v.Meta,
-					UpdatedAt:  v.UpdatedAt,
-				}
-				errUpdate := a.AddText(&updateText, true)
+				updateText := v
+				updateText.LocalID = val.LocalID
+				errUpdate := a.AddText(updateText, true)
 				if errUpdate != nil {
-					logger.Error("SyncTexts - errUpdate local: ", errUpdate)
-				}
-
-			} else {
-				// обновим данные и отправим обновления на сервер
-				errUpdate := a.AddText(val, false)
-				if errUpdate != nil {
-					logger.Error("SyncTexts - errUpdate server: ", errUpdate)
+					logger.Error(errUpdate)
 				}
 			}
 		} else {
@@ -1837,8 +1784,39 @@ func (a *App) SyncTexts(accessToken string) (err error) {
 
 			errAdd := a.AddText(&newText, true)
 			if errAdd != nil {
-				logger.Error("SyncTexts - errAdd: ", errAdd)
+				logger.Error(errAdd)
 			}
+
+		}
+	}
+
+	// создаем записи в бд сервера
+	for _, v := range texts {
+
+		if val, ok := getTextsMap[v.ExternalID]; ok {
+			if val.UpdatedAt.Unix() > v.UpdatedAt.Unix() {
+				continue
+			}
+		}
+
+		// отправим на сервер
+		reqBody := smodel.DataText{
+			ID:        v.ExternalID,
+			Title:     v.Title,
+			Text:      v.Text,
+			Meta:      v.Meta,
+			UpdatedAt: v.UpdatedAt,
+		}
+
+		id, err := a.HTTPService.AddText(c.AccessToken, reqBody)
+		if err != nil {
+			logger.Error(err)
+		}
+		v.ExternalID = id
+		err = a.db.AddText(&v)
+		if err != nil {
+			logger.Error("err --  ", err)
+			//return
 		}
 	}
 
@@ -1846,101 +1824,105 @@ func (a *App) SyncTexts(accessToken string) (err error) {
 }
 
 func (a *App) SyncFiles(accessToken string) (err error) {
-	filesMap := make(map[int]*model.DataFile)
-
-	files, err := a.GetAllFiles()
+	c, err := a.GetUserConfig()
 	if err != nil {
-		logger.Error("SyncFiles - GetAllFiles: ", err)
+		return err
+	}
+
+	filesMap := make(map[int]*model.DataFile)
+	getFilesMap := make(map[int]*model.DataFile)
+
+	files, err := a.db.GetAllFiles()
+	if err != nil {
 		return err
 	}
 
 	for _, v := range files {
+		log.Println("filesMap:", v.Title, v.LocalID, v.ExternalID)
 		filesMap[v.ExternalID] = &v
 	}
 
 	getFiles, err := a.HTTPService.GetFileList(accessToken)
 	if err != nil {
-		logger.Error("SyncFiles - HTTPService.GetFileList: ", err)
 		return err
+	}
+
+	for _, v := range getFiles {
+		log.Println("getFilesMap:", v.Title, v.ExternalID)
+		getFilesMap[v.ExternalID] = v
 	}
 
 	// создаем записи в бд клиента
 	for _, v := range getFiles {
-		if val, ok := filesMap[v.ExternalID]; ok {
 
-			// если дата на сервере новее обновим локальные данные
-			if val.UpdatedAt.Unix() < v.UpdatedAt.Unix() {
-				dFile, errDF := a.HTTPService.DownloadFile(v.Path)
-				if errDF != nil {
-					logger.Error("SyncFiles - HTTPService.DownloadFile: ", errDF)
-					continue
-				}
+		val, ok := filesMap[v.ExternalID]
 
-				ext := filepath.Ext(v.Filename)
-				filePath, errFP := a.FileService.SaveFile(dFile, ext)
-				if errFP != nil {
-					logger.Error("SyncFiles - FileService.SaveFile: ", errFP)
-					continue
-				}
-
-				dFile.Close()
-
-				updateFile := model.DataFile{
-					LocalID:    val.LocalID,
-					ExternalID: v.ExternalID,
-					Title:      v.Title,
-					Filename:   v.Filename,
-					Path:       filePath,
-					Meta:       v.Meta,
-					UpdatedAt:  v.UpdatedAt,
-				}
-				errUpdate := a.AddFile(&updateFile, true)
-				if errUpdate != nil {
-					logger.Error("SyncFiles - errUpdate: ", errUpdate)
-				}
-
-				errD := a.FileService.DeleteFile(val.Path)
-				if errD != nil {
-					continue
-				}
-			} else {
-				// обновим данные и отправим обновления на сервер
-				errUpdate := a.AddFile(val, false)
-				if errUpdate != nil {
-					logger.Error("SyncFiles - errUpdate server: ", errUpdate)
-				}
-			}
-		} else {
-			dFile, errDF := a.HTTPService.DownloadFile(v.Path)
-			if errDF != nil {
-				logger.Error("SyncFiles - downloadFile: ", v.Filename)
-
+		if ok {
+			if val.UpdatedAt.Unix() > v.UpdatedAt.Unix() {
 				continue
 			}
+		}
 
-			ext := filepath.Ext(v.Filename)
-			filePath, errFP := a.FileService.SaveFile(dFile, ext)
-			if errFP != nil {
-				logger.Error("SyncFiles - fileService.SaveFile: ", errFP)
+		dFile, errDF := a.HTTPService.DownloadFile(v.Path)
+		if errDF != nil {
+			logger.Error("SyncFiles - downloadFile: ", v.Filename)
+			continue
+		}
 
+		ext := filepath.Ext(v.Filename)
+
+		filePath, errFP := a.FileService.SaveFile(dFile, ext)
+		if errFP != nil {
+			logger.Error("SyncFiles - fileService.SaveFile: ", errFP)
+			continue
+		}
+
+		dFile.Close()
+
+		updateFile := v
+		if ok {
+			updateFile.LocalID = val.LocalID
+		}
+		updateFile.Path = filePath
+		errUpdate := a.AddFile(updateFile, true)
+		if errUpdate != nil {
+			logger.Error(errUpdate)
+		}
+	}
+
+	// создаем записи в бд сервера
+	for _, v := range files {
+
+		log.Println("files ", v.LocalID, v.ExternalID)
+
+		if val, ok := getFilesMap[v.ExternalID]; ok {
+			if val.UpdatedAt.Unix() > v.UpdatedAt.Unix() {
 				continue
 			}
+		}
 
-			dFile.Close()
+		// отправим на сервер
+		reqBody := smodel.DataFile{
+			ID:        v.ExternalID,
+			Title:     v.Title,
+			Filename:  v.Filename,
+			Path:      v.Path,
+			Meta:      v.Meta,
+			UpdatedAt: v.UpdatedAt,
+		}
 
-			newFile := model.DataFile{
-				ExternalID: v.ExternalID,
-				Title:      v.Title,
-				Filename:   v.Filename,
-				Path:       filePath,
-				Meta:       v.Meta,
-				UpdatedAt:  v.UpdatedAt,
-			}
+		id, err := a.HTTPService.AddFile(c.AccessToken, reqBody)
+		if err != nil {
+			logger.Error(err)
+		}
 
-			errAdd := a.AddFile(&newFile, true)
-			if errAdd != nil {
-				logger.Error("syncFile - errAdd: ", errAdd)
-			}
+		//log.Println("id", id)
+
+		v.ExternalID = id
+		err = a.db.AddFile(&v)
+		if err != nil {
+			logger.Error("err --  ", err)
+			//return
 		}
 	}
 

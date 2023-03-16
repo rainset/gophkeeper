@@ -30,17 +30,17 @@ type Interface interface {
 	FindAllCards(ctx context.Context, userID int) (cards []model.DataCard, err error)
 	DeleteCard(ctx context.Context, cardID, userID int) error
 
-	SaveFile(ctx context.Context, file model.DataFile) (err error)
+	SaveFile(ctx context.Context, file model.DataFile) (id int, err error)
 	DeleteFile(ctx context.Context, fileID, userID int) error
 	FindFile(ctx context.Context, fileID, userID int) (file model.DataFile, err error)
 	FindAllFiles(ctx context.Context, userID int) (files []model.DataFile, err error)
 
-	SaveCred(ctx context.Context, cred model.DataCred) (err error)
+	SaveCred(ctx context.Context, cred model.DataCred) (id int, err error)
 	DeleteCred(ctx context.Context, credID, userID int) error
 	FindCred(ctx context.Context, credID, userID int) (cred model.DataCred, err error)
 	FindAllCreds(ctx context.Context, userID int) (creds []model.DataCred, err error)
 
-	SaveText(ctx context.Context, text model.DataText) (err error)
+	SaveText(ctx context.Context, text model.DataText) (id int, err error)
 	DeleteText(ctx context.Context, textID, userID int) error
 	FindText(ctx context.Context, textID, userID int) (text model.DataText, err error)
 	FindAllTexts(ctx context.Context, userID int) (texts []model.DataText, err error)
@@ -178,11 +178,12 @@ func (d *Database) DeleteCard(ctx context.Context, cardID, userID int) (err erro
 	return err
 }
 
-func (d *Database) SaveFile(ctx context.Context, file model.DataFile) (err error) {
+func (d *Database) SaveFile(ctx context.Context, file model.DataFile) (id int, err error) {
 	if file.ID == 0 {
-		sql := "INSERT INTO data_files (user_id,title,filename,path,meta,updated_at) VALUES ($1,$2,$3,$4,$5,$6)"
-		_, err = d.pgx.Exec(ctx, sql, file.UserID, file.Title, file.Filename, file.Path, file.Meta, file.UpdatedAt)
+		sql := "INSERT INTO data_files (user_id,title,filename,path,meta,updated_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id"
+		err = d.pgx.QueryRow(ctx, sql, file.UserID, file.Title, file.Filename, file.Path, file.Meta, file.UpdatedAt).Scan(&id)
 	} else {
+		id = file.ID
 		sql := "UPDATE data_files SET title=$1,filename=$2,path=$3,meta=$4, updated_at=$5 WHERE user_id=$6 AND id=$7"
 		_, err = d.pgx.Exec(ctx, sql, file.Title, file.Filename, file.Path, file.Meta, file.UpdatedAt, file.UserID, file.ID)
 	}
@@ -190,11 +191,11 @@ func (d *Database) SaveFile(ctx context.Context, file model.DataFile) (err error
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		if pgErr.Code == pgerrcode.UniqueViolation {
-			return ErrorRowAlreadyExists
+			return id, ErrorRowAlreadyExists
 		}
 	}
 
-	return err
+	return id, err
 }
 func (d *Database) DeleteFile(ctx context.Context, fileID, userID int) (err error) {
 	sql := "DELETE  FROM data_files WHERE id=$1 AND user_id =$2"
@@ -215,11 +216,12 @@ func (d *Database) FindAllFiles(ctx context.Context, userID int) (files []model.
 	return files, err
 }
 
-func (d *Database) SaveCred(ctx context.Context, cred model.DataCred) (err error) {
+func (d *Database) SaveCred(ctx context.Context, cred model.DataCred) (id int, err error) {
 	if cred.ID == 0 {
-		sql := "INSERT INTO data_creds (user_id,title,username,password,meta,updated_at) VALUES ($1,$2,$3,$4,$5,$6)"
-		_, err = d.pgx.Exec(ctx, sql, cred.UserID, cred.Title, cred.Username, cred.Password, cred.Meta, cred.UpdatedAt)
+		sql := "INSERT INTO data_creds (user_id,title,username,password,meta,updated_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id"
+		err = d.pgx.QueryRow(ctx, sql, cred.UserID, cred.Title, cred.Username, cred.Password, cred.Meta, cred.UpdatedAt).Scan(&id)
 	} else {
+		id = cred.ID
 		sql := "UPDATE data_creds SET title=$1,username=$2,password=$3,meta=$4, updated_at=$5 WHERE id=$6 AND user_id=$7"
 		_, err = d.pgx.Exec(ctx, sql, cred.Title, cred.Username, cred.Password, cred.Meta, cred.UpdatedAt, cred.ID, cred.UserID)
 	}
@@ -227,11 +229,11 @@ func (d *Database) SaveCred(ctx context.Context, cred model.DataCred) (err error
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		if pgErr.Code == pgerrcode.UniqueViolation {
-			return ErrorRowAlreadyExists
+			return id, ErrorRowAlreadyExists
 		}
 	}
 
-	return err
+	return id, err
 }
 func (d *Database) DeleteCred(ctx context.Context, credID, userID int) (err error) {
 	sql := "DELETE FROM data_creds WHERE id=$1 AND user_id =$2"
@@ -252,11 +254,12 @@ func (d *Database) FindAllCreds(ctx context.Context, userID int) (creds []model.
 	return creds, err
 }
 
-func (d *Database) SaveText(ctx context.Context, text model.DataText) (err error) {
+func (d *Database) SaveText(ctx context.Context, text model.DataText) (id int, err error) {
 	if text.ID == 0 {
-		sql := "INSERT INTO data_text (user_id,title,text,meta,updated_at) VALUES ($1,$2,$3,$4,$5)"
-		_, err = d.pgx.Exec(ctx, sql, text.UserID, text.Title, text.Text, text.Meta, text.UpdatedAt)
+		sql := "INSERT INTO data_text (user_id,title,text,meta,updated_at) VALUES ($1,$2,$3,$4,$5) RETURNING id"
+		err = d.pgx.QueryRow(ctx, sql, text.UserID, text.Title, text.Text, text.Meta, text.UpdatedAt).Scan(&id)
 	} else {
+		id = text.ID
 		sql := "UPDATE data_text SET title=$1,text=$2,meta=$3, updated_at=$4 WHERE id=$5 AND user_id=$6"
 		_, err = d.pgx.Exec(ctx, sql, text.Title, text.Text, text.Meta, text.UpdatedAt, text.ID, text.UserID)
 	}
@@ -264,11 +267,11 @@ func (d *Database) SaveText(ctx context.Context, text model.DataText) (err error
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) {
 		if pgErr.Code == pgerrcode.UniqueViolation {
-			return ErrorRowAlreadyExists
+			return id, ErrorRowAlreadyExists
 		}
 	}
 
-	return err
+	return id, err
 }
 func (d *Database) DeleteText(ctx context.Context, textID, userID int) (err error) {
 	sql := "DELETE FROM data_text WHERE id=$1 AND user_id =$2"

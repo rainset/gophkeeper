@@ -46,13 +46,20 @@ ld-flags-example:
 ## compile: Compiling for every OS and Platform https://developer.fyne.io/started/cross-compiling
 compile:
 	echo "Compiling for every OS and Platform"
-	CGO_ENABLED=1 $(GOPATH)/bin/fyne-cross linux -arch=* ./cmd/client/main.go
+	CGO_ENABLED=1 $(GOPATH)/bin/fyne-cross linux -arch=amd64 $(GOBASE)/cmd/client/main.go
 
 ## cert: Generate TLS certificates
 cert:
 	go run cmd/cert/main.go
 
 help: Makefile
+
+	@echo "GOBASE: $(GOBASE)"
+	@echo "PATH: $(PATH)"
+	@echo "GOPATH: $(GOPATH)"
+	@echo "GOBASE: $(GOBASE)"
+	@echo "GOBIN: $(GOBIN)"
+
 	@echo
 	@echo " Choose a command run in "$(PROJECTNAME)":"
 	@echo

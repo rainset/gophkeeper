@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/rainset/gophkeeper/internal/client/config"
@@ -137,7 +139,7 @@ func (s *HTTPService) GetCredList(accessToken string) (items []*model.DataCred, 
 	}
 }
 
-func (s *HTTPService) GetTextList(accessToken string) (items []model.DataText, err error) {
+func (s *HTTPService) GetTextList(accessToken string) (items []*model.DataText, err error) {
 	url := fmt.Sprintf("%s://%s%s", s.cfg.ServerProtocol, s.cfg.ServerAddress, "/store/text/list")
 
 	s.client.SetAuthToken(accessToken)
@@ -154,7 +156,7 @@ func (s *HTTPService) GetTextList(accessToken string) (items []model.DataText, e
 	}
 }
 
-func (s *HTTPService) GetFileList(accessToken string) (items []model.DataFile, err error) {
+func (s *HTTPService) GetFileList(accessToken string) (items []*model.DataFile, err error) {
 	url := fmt.Sprintf("%s://%s%s", s.cfg.ServerProtocol, s.cfg.ServerAddress, "/store/file/list")
 
 	s.client.SetAuthToken(accessToken)
@@ -255,10 +257,6 @@ func (s *HTTPService) AddCard(accessToken string, card smodel.DataCard) (id int,
 	s.client.SetAuthToken(accessToken)
 	res, err := s.client.R().SetBody(card).SetResult(&rb).Post(url)
 
-	logger.Info(string(res.Body()))
-	logger.Info("rb ", rb.ID)
-	logger.Info("cardID ", card.ID)
-
 	switch res.StatusCode() {
 	case http.StatusUnauthorized:
 		return rb.ID, ErrStatusUnauthorized
@@ -272,7 +270,7 @@ func (s *HTTPService) AddCred(accessToken string, cred smodel.DataCred) (id int,
 	url := fmt.Sprintf("%s://%s%s", s.cfg.ServerProtocol, s.cfg.ServerAddress, "/store/cred")
 
 	s.client.SetAuthToken(accessToken)
-	res, err := s.client.R().SetBody(cred).SetResult(rb).Post(url)
+	res, err := s.client.R().SetBody(cred).SetResult(&rb).Post(url)
 
 	switch res.StatusCode() {
 	case http.StatusUnauthorized:
@@ -287,7 +285,7 @@ func (s *HTTPService) AddText(accessToken string, text smodel.DataText) (id int,
 	url := fmt.Sprintf("%s://%s%s", s.cfg.ServerProtocol, s.cfg.ServerAddress, "/store/text")
 
 	s.client.SetAuthToken(accessToken)
-	res, err := s.client.R().SetBody(text).SetResult(rb).Post(url)
+	res, err := s.client.R().SetBody(text).SetResult(&rb).Post(url)
 
 	switch res.StatusCode() {
 	case http.StatusUnauthorized:
@@ -309,9 +307,11 @@ func (s *HTTPService) AddFile(accessToken string, file smodel.DataFile) (id int,
 			"file": file.Path,
 		}).
 		SetFormData(map[string]string{
-			"title": file.Title,
-			"meta":  file.Meta,
-		}).SetResult(rb).Post(url)
+			"id":         strconv.Itoa(file.ID),
+			"title":      file.Title,
+			"meta":       file.Meta,
+			"updated_at": file.UpdatedAt.Format(time.RFC3339),
+		}).SetResult(&rb).Post(url)
 
 	switch res.StatusCode() {
 	case http.StatusUnauthorized:

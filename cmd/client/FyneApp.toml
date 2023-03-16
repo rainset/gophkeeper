@@ -1,0 +1,8 @@
+Website = "https://megasoft.pro"
+
+[Details]
+  Icon = "icon.png"
+  Name = "Gophkeeper"
+  ID = "io.github.rainset.gophkeeper"
+  Version = "1.0.0"
+  Build = 17

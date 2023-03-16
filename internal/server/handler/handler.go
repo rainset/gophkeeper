@@ -3,6 +3,8 @@ package handler
 import (
 	"errors"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/rainset/gophkeeper/internal/server/model"
@@ -301,7 +303,7 @@ func (h *Handler) SaveCred(c *gin.Context) {
 
 	rb.UserID = userID
 
-	err = h.service.SaveCred(c, rb)
+	id, err := h.service.SaveCred(c, rb)
 	if err != nil {
 		if errors.Is(err, storage.ErrorRowAlreadyExists) {
 			c.AbortWithStatus(http.StatusConflict)
@@ -315,7 +317,8 @@ func (h *Handler) SaveCred(c *gin.Context) {
 		return
 	}
 
-	c.Status(http.StatusCreated)
+	c.JSON(http.StatusCreated, gin.H{"id": id})
+
 }
 
 func (h *Handler) DeleteCred(c *gin.Context) {
@@ -426,7 +429,7 @@ func (h *Handler) SaveText(c *gin.Context) {
 
 	rb.UserID = userID
 
-	err = h.service.SaveText(c, rb)
+	id, err := h.service.SaveText(c, rb)
 	if err != nil {
 		if errors.Is(err, storage.ErrorRowAlreadyExists) {
 			c.AbortWithStatus(http.StatusConflict)
@@ -440,7 +443,7 @@ func (h *Handler) SaveText(c *gin.Context) {
 		return
 	}
 
-	c.Status(http.StatusCreated)
+	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
 func (h *Handler) DeleteText(c *gin.Context) {
@@ -572,20 +575,41 @@ func (h *Handler) SaveFile(c *gin.Context) {
 		return
 	}
 
+	logger.Info(c.PostForm("updated_at"))
+
+	t, err := time.Parse(time.RFC3339, c.PostForm("updated_at"))
+	if err != nil {
+		logger.Error("updated_at format RFC3339 error", err)
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	id, err := strconv.Atoi(c.PostForm("id"))
+	if err != nil {
+		logger.Error("parse id error", err)
+		c.AbortWithStatus(http.StatusBadRequest)
+		return
+	}
+
+	if id > 0 {
+		file.ID = id
+	}
+
 	file.UserID = userID
 	file.Title = c.PostForm("title")
 	file.Meta = c.PostForm("meta")
 	file.Path = filePath
+	file.UpdatedAt = t
 	file.Filename = formFile.Filename
 
-	err = h.service.SaveFile(c, file)
+	fileID, err := h.service.SaveFile(c, file)
 	if err != nil {
 		logger.Error("open upload file error", err)
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
-	c.Status(http.StatusCreated)
+	c.JSON(http.StatusCreated, gin.H{"id": fileID})
 }
 
 func (h *Handler) DeleteFile(c *gin.Context) {

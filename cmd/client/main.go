@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"github.com/rainset/gophkeeper/internal/client/app"
 	"github.com/rainset/gophkeeper/internal/client/config"
 	"log"
@@ -18,9 +17,9 @@ var (
 
 func main() {
 	// print client build version
-	fmt.Printf("Build version: %s\n", BuildVersion)
-	fmt.Printf("Build date: %s\n", BuildDate)
-	fmt.Printf("Build commit: %s\n", BuildCommit)
+	//fmt.Printf("Build version: %s\n", BuildVersion)
+	//fmt.Printf("Build date: %s\n", BuildDate)
+	//fmt.Printf("Build commit: %s\n", BuildCommit)
 
 	cfg, err := config.ReadConfig()
 	if err != nil {

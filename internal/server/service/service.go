@@ -132,12 +132,11 @@ func (s *Service) FindAllCards(ctx context.Context, userID int) (cards []model.D
 	return s.Store.FindAllCards(ctx, userID)
 }
 
-func (s *Service) SaveFile(ctx context.Context, file model.DataFile) (err error) {
+func (s *Service) SaveFile(ctx context.Context, file model.DataFile) (id int, err error) {
 	err = file.Validate()
 	if err != nil {
 		logger.Error("SaveFile Validate()", err)
-
-		return err
+		return id, err
 	}
 
 	return s.Store.SaveFile(ctx, file)
@@ -177,12 +176,12 @@ func (s *Service) FindAllFiles(ctx context.Context, userID int) (files []model.D
 	return s.Store.FindAllFiles(ctx, userID)
 }
 
-func (s *Service) SaveCred(ctx context.Context, cred model.DataCred) (err error) {
+func (s *Service) SaveCred(ctx context.Context, cred model.DataCred) (id int, err error) {
 	err = cred.Validate()
 	if err != nil {
 		logger.Error("SaveCred Validate()", err)
 
-		return err
+		return id, err
 	}
 
 	return s.Store.SaveCred(ctx, cred)
@@ -200,12 +199,12 @@ func (s *Service) FindAllCreds(ctx context.Context, userID int) (creds []model.D
 	return s.Store.FindAllCreds(ctx, userID)
 }
 
-func (s *Service) SaveText(ctx context.Context, text model.DataText) (err error) {
+func (s *Service) SaveText(ctx context.Context, text model.DataText) (id int, err error) {
 	err = text.Validate()
 	if err != nil {
 		logger.Error("SaveText Validate()", err)
 
-		return err
+		return id, err
 	}
 
 	return s.Store.SaveText(ctx, text)
