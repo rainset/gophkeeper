@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -43,8 +44,7 @@ func (s *Server) Stop(ctx context.Context) error {
 
 // Run Инициализация приложения.
 func Run(cfg *config.Config) {
-
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	store := storage.New(ctx, cfg.DatabaseDsn)
 	storeFile, err := file.New(cfg.FileStorage)
@@ -58,16 +58,21 @@ func Run(cfg *config.Config) {
 	// HTTP Server
 	srv := NewServer(cfg, newHandler.Init())
 
+	var wg sync.WaitGroup
+	wg.Add(1) // добавляем одну горутину в группу
+
 	// удаление по времени
 	go func() {
+		defer wg.Done()
 		for {
 			err := newService.ClearExpiredRefreshTokens(ctx)
 			if err != nil {
 				logger.Error(err)
+				return
 			}
-
 			time.Sleep(60 * time.Second)
 		}
+
 	}()
 
 	go func() {
@@ -82,9 +87,12 @@ func Run(cfg *config.Config) {
 	<-quit
 	logger.Info("Shutting down server...")
 
+	wg.Wait()
+	store.Close()
+
 	// The context is used to inform the server it has 5 seconds to finish
 	// the request it is currently handling
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
 	if err := srv.Stop(ctx); err != nil {

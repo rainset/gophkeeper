@@ -72,7 +72,7 @@ func (h *Handler) SignIn(c *gin.Context) {
 	err := c.BindJSON(&rb)
 
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SignIn Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -80,7 +80,7 @@ func (h *Handler) SignIn(c *gin.Context) {
 
 	token, err := h.service.SignIn(c, rb)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SignIn Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusUnauthorized)
 
 		return
@@ -93,6 +93,7 @@ func (h *Handler) SignUp(c *gin.Context) {
 	var rb model.User
 	err := c.BindJSON(&rb)
 	if err != nil {
+		logger.Error("SignUp Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -106,7 +107,7 @@ func (h *Handler) SignUp(c *gin.Context) {
 			return
 		}
 
-		logger.Error(err)
+		logger.Error("SignUp Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -119,6 +120,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 	var rb model.RefreshToken
 	err := c.BindJSON(&rb)
 	if err != nil {
+		logger.Error("RefreshToken Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -126,7 +128,7 @@ func (h *Handler) RefreshToken(c *gin.Context) {
 
 	tokens, err := h.service.GetRefreshToken(c, rb.Token)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("RefreshToken Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -140,7 +142,7 @@ func (h *Handler) SignKey(c *gin.Context) {
 	err := c.BindJSON(&rb)
 
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SignKey Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -148,7 +150,7 @@ func (h *Handler) SignKey(c *gin.Context) {
 
 	signKey, err := h.service.GetSignKey(c, rb.Login, rb.Password)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SignKey Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusUnauthorized)
 
 		return
@@ -163,7 +165,7 @@ func (h *Handler) SaveCard(c *gin.Context) {
 
 	err = c.BindJSON(&rb)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SaveCard Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -171,7 +173,7 @@ func (h *Handler) SaveCard(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SaveCard Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -187,7 +189,8 @@ func (h *Handler) SaveCard(c *gin.Context) {
 			return
 		}
 
-		logger.Error(err, rb)
+		logger.Error("SaveCard Handler: ", err, rb)
+
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -202,7 +205,7 @@ func (h *Handler) DeleteCard(c *gin.Context) {
 
 	err = c.BindJSON(&rb)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("DeleteCard Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -210,7 +213,7 @@ func (h *Handler) DeleteCard(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("DeleteCard Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -218,6 +221,7 @@ func (h *Handler) DeleteCard(c *gin.Context) {
 
 	err = h.service.DeleteCard(c, rb.ID, userID)
 	if err != nil {
+		logger.Error("DeleteCard Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -231,6 +235,7 @@ func (h *Handler) FindCard(c *gin.Context) {
 	var rb model.DataCard
 	err = c.BindJSON(&rb)
 	if err != nil {
+		logger.Error("FindCard Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -246,6 +251,7 @@ func (h *Handler) FindCard(c *gin.Context) {
 
 	card, err := h.service.FindCard(c, rb.ID, userID)
 	if err != nil {
+		logger.Error("FindCard Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -259,7 +265,7 @@ func (h *Handler) FindAllCards(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindAllCards Handler: ", err)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -267,7 +273,7 @@ func (h *Handler) FindAllCards(c *gin.Context) {
 
 	cards, err := h.service.FindAllCards(c, userID)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindAllCards Handler: ", err)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -287,7 +293,7 @@ func (h *Handler) SaveCred(c *gin.Context) {
 	var rb model.DataCred
 	err = c.BindJSON(&rb)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SaveCred Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -311,7 +317,7 @@ func (h *Handler) SaveCred(c *gin.Context) {
 			return
 		}
 
-		logger.Error(err, rb)
+		logger.Error("SaveCred Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -326,7 +332,7 @@ func (h *Handler) DeleteCred(c *gin.Context) {
 	var rb model.DataCred
 	err = c.BindJSON(&rb)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("DeleteCred Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -334,7 +340,7 @@ func (h *Handler) DeleteCred(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("DeleteCred Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -342,6 +348,7 @@ func (h *Handler) DeleteCred(c *gin.Context) {
 
 	err = h.service.DeleteCred(c, rb.ID, userID)
 	if err != nil {
+		logger.Error("DeleteCred Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -355,7 +362,7 @@ func (h *Handler) FindCred(c *gin.Context) {
 	var rb model.DataCred
 	err = c.BindJSON(&rb)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindCred Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -363,7 +370,7 @@ func (h *Handler) FindCred(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindCred Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -371,7 +378,7 @@ func (h *Handler) FindCred(c *gin.Context) {
 
 	cred, err := h.service.FindCred(c, rb.ID, userID)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindCred Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -385,7 +392,7 @@ func (h *Handler) FindAllCreds(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindAllCreds Handler: ", err)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -393,7 +400,7 @@ func (h *Handler) FindAllCreds(c *gin.Context) {
 
 	creds, err := h.service.FindAllCreds(c, userID)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindAllCreds Handler: ", err)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -413,7 +420,7 @@ func (h *Handler) SaveText(c *gin.Context) {
 	var rb model.DataText
 	err = c.BindJSON(&rb)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SaveText Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -421,7 +428,7 @@ func (h *Handler) SaveText(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SaveText Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -437,7 +444,7 @@ func (h *Handler) SaveText(c *gin.Context) {
 			return
 		}
 
-		logger.Error(err, rb)
+		logger.Error("SaveText Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -451,7 +458,7 @@ func (h *Handler) DeleteText(c *gin.Context) {
 	var rb model.DataText
 	err = c.BindJSON(&rb)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("DeleteText Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -459,7 +466,7 @@ func (h *Handler) DeleteText(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("DeleteText Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -467,7 +474,7 @@ func (h *Handler) DeleteText(c *gin.Context) {
 
 	err = h.service.DeleteText(c, rb.ID, userID)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("DeleteText Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -481,7 +488,7 @@ func (h *Handler) FindText(c *gin.Context) {
 	var rb model.DataText
 	err = c.BindJSON(&rb)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindText Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -489,7 +496,7 @@ func (h *Handler) FindText(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindText Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -497,7 +504,7 @@ func (h *Handler) FindText(c *gin.Context) {
 
 	card, err := h.service.FindText(c, rb.ID, userID)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindText Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -511,7 +518,7 @@ func (h *Handler) FindAllTexts(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindAllTexts Handler: ", err)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -519,7 +526,7 @@ func (h *Handler) FindAllTexts(c *gin.Context) {
 
 	texts, err := h.service.FindAllTexts(c, userID)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindAllTexts Handler: ", err)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -539,7 +546,7 @@ func (h *Handler) SaveFile(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("SaveFile Handler: ", err, file)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -547,7 +554,7 @@ func (h *Handler) SaveFile(c *gin.Context) {
 
 	formFile, err := c.FormFile("file")
 	if err != nil {
-		logger.Error("file param required", err)
+		logger.Error("SaveFile Handler: ", err, file)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -555,7 +562,7 @@ func (h *Handler) SaveFile(c *gin.Context) {
 
 	src, err := formFile.Open()
 	if err != nil {
-		logger.Error("open upload file error", err)
+		logger.Error("SaveFile Handler: ", err, file)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -569,24 +576,22 @@ func (h *Handler) SaveFile(c *gin.Context) {
 			return
 		}
 
-		logger.Error(err)
+		logger.Error("SaveFile Handler: ", err, file)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
 	}
 
-	logger.Info(c.PostForm("updated_at"))
-
 	t, err := time.Parse(time.RFC3339, c.PostForm("updated_at"))
 	if err != nil {
-		logger.Error("updated_at format RFC3339 error", err)
+		logger.Error("SaveFile Handler updated_at format RFC3339 error: ", err, file)
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
 	id, err := strconv.Atoi(c.PostForm("id"))
 	if err != nil {
-		logger.Error("parse id error", err)
+		logger.Error("SaveFile Handler parse id error: ", err, file)
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
@@ -604,7 +609,7 @@ func (h *Handler) SaveFile(c *gin.Context) {
 
 	fileID, err := h.service.SaveFile(c, file)
 	if err != nil {
-		logger.Error("open upload file error", err)
+		logger.Error("SaveFile Handler open upload file error: ", err, file)
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
@@ -617,14 +622,14 @@ func (h *Handler) DeleteFile(c *gin.Context) {
 	var rb model.DataFile
 	err = c.BindJSON(&rb)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("DeleteFile Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 		return
 	}
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("DeleteFile Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -632,7 +637,7 @@ func (h *Handler) DeleteFile(c *gin.Context) {
 
 	err = h.service.DeleteFile(c, rb.ID, userID)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("DeleteFile Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -653,7 +658,7 @@ func (h *Handler) FindFile(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindFile Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -661,7 +666,7 @@ func (h *Handler) FindFile(c *gin.Context) {
 
 	file, err := h.service.FindFile(c, rb.ID, userID)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindFile Handler: ", err, rb)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -675,7 +680,7 @@ func (h *Handler) FindAllFiles(c *gin.Context) {
 
 	userID, err := h.getUserIDFromRequest(c)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindAllFiles Handler: ", err)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return
@@ -683,7 +688,7 @@ func (h *Handler) FindAllFiles(c *gin.Context) {
 
 	files, err := h.service.FindAllFiles(c, userID)
 	if err != nil {
-		logger.Error(err)
+		logger.Error("FindAllFiles Handler: ", err)
 		c.AbortWithStatus(http.StatusBadRequest)
 
 		return

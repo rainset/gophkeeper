@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/aes"
 	"errors"
+	"fmt"
 	"github.com/rainset/gophkeeper/pkg/crypt"
 	"github.com/rainset/gophkeeper/pkg/hash"
 	"log"
@@ -65,12 +66,16 @@ func New(ctx context.Context, dataSourceName string) *Database {
 	}
 }
 
+func (d *Database) Close() {
+	d.pgx.Close()
+}
+
 func (d *Database) GetSignKey(ctx context.Context, login, password string) (signKey string, err error) {
 	var passHash = hash.Md5(password)
 
 	sql := "SELECT sign_key FROM users WHERE login = $1 AND password = $2"
 	err = d.pgx.QueryRow(ctx, sql, login, passHash).Scan(&signKey)
-	return signKey, err
+	return signKey, fmt.Errorf("db.GetSignKey: %w", err)
 }
 
 func (d *Database) CreateUser(ctx context.Context, user model.User) (userID int, err error) {
@@ -79,7 +84,7 @@ func (d *Database) CreateUser(ctx context.Context, user model.User) (userID int,
 
 	h, err := hash.GenerateRandom(2 * aes.BlockSize)
 	if err != nil {
-		return userID, err
+		return userID, fmt.Errorf("db.CreateUser: %w", err)
 	}
 
 	signKey := crypt.EncodeBase64(h)
@@ -96,7 +101,7 @@ func (d *Database) CreateUser(ctx context.Context, user model.User) (userID int,
 		}
 	}
 
-	return userID, err
+	return userID, fmt.Errorf("db.CreateUser: %w", err)
 }
 func (d *Database) GetUserIDByCredentials(ctx context.Context, login, password string) (userID int, err error) {
 	var qPass string
@@ -106,28 +111,28 @@ func (d *Database) GetUserIDByCredentials(ctx context.Context, login, password s
 
 	err = d.pgx.QueryRow(ctx, sql, login).Scan(&userID, &qPass)
 	if err != nil {
-		return userID, err
+		return userID, fmt.Errorf("db.GetUserIDByCredentials: %w", err)
 	}
 
 	if hash != qPass {
 		return userID, ErrorUserCredentials
 	}
 
-	return userID, err
+	return userID, fmt.Errorf("db.GetUserIDByCredentials: %w", err)
 }
 
 func (d *Database) SetRefreshToken(ctx context.Context, in model.RefreshToken) error {
 	sql := "INSERT INTO refresh_tokens (user_id, token , created_at, expired_at)  VALUES ($1, $2, $3, $4)"
 	_, err := d.pgx.Exec(ctx, sql, in.UserID, in.Token, time.Now(), in.ExpiredAt)
 
-	return err
+	return fmt.Errorf("db.SetRefreshToken: %w", err)
 }
 func (d *Database) GetRefreshTokenUserID(ctx context.Context, token string) (userID int, err error) {
 	sql := "SELECT user_id FROM refresh_tokens WHERE token=$1 AND expired_at>NOW()"
 
 	err = d.pgx.QueryRow(ctx, sql, token).Scan(&userID)
 	if err != nil {
-		return userID, err
+		return userID, fmt.Errorf("db.GetRefreshTokenUserID: %w", err)
 	}
 
 	return userID, nil
@@ -137,7 +142,7 @@ func (d *Database) ClearExpiredRefreshTokens(ctx context.Context) error {
 	sql := "DELETE FROM refresh_tokens WHERE expired_at < NOW()"
 	_, err := d.pgx.Exec(ctx, sql)
 
-	return err
+	return fmt.Errorf("db.ClearExpiredRefreshTokens: %w", err)
 }
 
 func (d *Database) SaveCard(ctx context.Context, card model.DataCard) (id int, err error) {
@@ -157,25 +162,25 @@ func (d *Database) SaveCard(ctx context.Context, card model.DataCard) (id int, e
 		}
 	}
 
-	return id, err
+	return id, fmt.Errorf("db.SaveCard: %w", err)
 }
 func (d *Database) FindCard(ctx context.Context, cardID, userID int) (card model.DataCard, err error) {
 	sql := "SELECT id,title,number,date,cvv,meta,updated_at FROM data_cards WHERE id=$1 AND user_id = $2"
 	err = pgxscan.Get(ctx, d.pgx, &card, sql, cardID, userID)
 
-	return card, err
+	return card, fmt.Errorf("db.FindCard: %w", err)
 }
 func (d *Database) FindAllCards(ctx context.Context, userID int) (cards []model.DataCard, err error) {
 	sql := "SELECT id,title,number,date,cvv,meta,updated_at FROM data_cards WHERE user_id = $1 ORDER BY id DESC"
 	err = pgxscan.Select(ctx, d.pgx, &cards, sql, userID)
 
-	return cards, err
+	return cards, fmt.Errorf("db.FindAllCards: %w", err)
 }
 func (d *Database) DeleteCard(ctx context.Context, cardID, userID int) (err error) {
 	sql := "DELETE FROM data_cards WHERE id=$1 AND user_id =$2"
 	_, err = d.pgx.Exec(ctx, sql, cardID, userID)
 
-	return err
+	return fmt.Errorf("db.DeleteCard: %w", err)
 }
 
 func (d *Database) SaveFile(ctx context.Context, file model.DataFile) (id int, err error) {
@@ -195,25 +200,25 @@ func (d *Database) SaveFile(ctx context.Context, file model.DataFile) (id int, e
 		}
 	}
 
-	return id, err
+	return id, fmt.Errorf("db.SaveFile: %w", err)
 }
 func (d *Database) DeleteFile(ctx context.Context, fileID, userID int) (err error) {
 	sql := "DELETE  FROM data_files WHERE id=$1 AND user_id =$2"
 	_, err = d.pgx.Exec(ctx, sql, fileID, userID)
 
-	return err
+	return fmt.Errorf("db.DeleteFile: %w", err)
 }
 func (d *Database) FindFile(ctx context.Context, fileID, userID int) (file model.DataFile, err error) {
 	sql := "SELECT id,title,filename,path,meta,updated_at FROM data_files WHERE id=$1 AND user_id = $2"
 	err = pgxscan.Get(ctx, d.pgx, &file, sql, fileID, userID)
 
-	return file, err
+	return file, fmt.Errorf("db.FindFile: %w", err)
 }
 func (d *Database) FindAllFiles(ctx context.Context, userID int) (files []model.DataFile, err error) {
 	sql := "SELECT id,title,filename,path,meta,updated_at FROM data_files WHERE user_id = $1 ORDER BY id DESC"
 	err = pgxscan.Select(ctx, d.pgx, &files, sql, userID)
 
-	return files, err
+	return files, fmt.Errorf("db.FindAllFiles: %w", err)
 }
 
 func (d *Database) SaveCred(ctx context.Context, cred model.DataCred) (id int, err error) {
@@ -233,25 +238,25 @@ func (d *Database) SaveCred(ctx context.Context, cred model.DataCred) (id int, e
 		}
 	}
 
-	return id, err
+	return id, fmt.Errorf("db.SaveCred: %w", err)
 }
 func (d *Database) DeleteCred(ctx context.Context, credID, userID int) (err error) {
 	sql := "DELETE FROM data_creds WHERE id=$1 AND user_id =$2"
 	_, err = d.pgx.Exec(ctx, sql, credID, userID)
 
-	return err
+	return fmt.Errorf("db.DeleteCred: %w", err)
 }
 func (d *Database) FindCred(ctx context.Context, credID, userID int) (cred model.DataCred, err error) {
 	sql := "SELECT id,title,username,password,meta,updated_at FROM data_creds WHERE id=$1 AND user_id = $2"
 	err = pgxscan.Get(ctx, d.pgx, &cred, sql, credID, userID)
 
-	return cred, err
+	return cred, fmt.Errorf("db.FindCred: %w", err)
 }
 func (d *Database) FindAllCreds(ctx context.Context, userID int) (creds []model.DataCred, err error) {
 	sql := "SELECT id,title,username,password,meta,updated_at FROM data_creds WHERE user_id = $1 ORDER BY id DESC"
 	err = pgxscan.Select(ctx, d.pgx, &creds, sql, userID)
 
-	return creds, err
+	return creds, fmt.Errorf("db.FindAllCreds: %w", err)
 }
 
 func (d *Database) SaveText(ctx context.Context, text model.DataText) (id int, err error) {
@@ -271,23 +276,23 @@ func (d *Database) SaveText(ctx context.Context, text model.DataText) (id int, e
 		}
 	}
 
-	return id, err
+	return id, fmt.Errorf("db.SaveText: %w", err)
 }
 func (d *Database) DeleteText(ctx context.Context, textID, userID int) (err error) {
 	sql := "DELETE FROM data_text WHERE id=$1 AND user_id =$2"
 	_, err = d.pgx.Exec(ctx, sql, textID, userID)
 
-	return err
+	return fmt.Errorf("db.DeleteText: %w", err)
 }
 func (d *Database) FindText(ctx context.Context, textID, userID int) (text model.DataText, err error) {
 	sql := "SELECT id,title,text,meta,updated_at FROM data_text WHERE id=$1 AND user_id = $2"
 	err = pgxscan.Get(ctx, d.pgx, &text, sql, textID, userID)
 
-	return text, err
+	return text, fmt.Errorf("db.FindText: %w", err)
 }
 func (d *Database) FindAllTexts(ctx context.Context, userID int) (texts []model.DataText, err error) {
 	sql := "SELECT id,title,text,meta,updated_at FROM data_text WHERE user_id = $1 ORDER BY id DESC"
 	err = pgxscan.Select(ctx, d.pgx, &texts, sql, userID)
 
-	return texts, err
+	return texts, fmt.Errorf("db.FindAllTexts: %w", err)
 }
