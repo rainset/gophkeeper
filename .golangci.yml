@@ -1,0 +1,56 @@
+run:
+  timeout: 1m
+
+linters:
+  disable-all: true
+  enable:
+    - asciicheck
+    - deadcode
+    - depguard
+    - dogsled
+    - errcheck
+    - exhaustive
+    - exportloopref
+    - gocognit
+    - gocyclo
+    - goheader
+    - goimports
+    - gomodguard
+    - goprintffuncname
+    - gosimple
+    - govet
+    - vetshadow
+    - ineffassign
+    - misspell
+    - nakedret
+    - nestif
+    - staticcheck
+    - typecheck
+    - unconvert
+    - unused
+    - varcheck
+    - whitespace
+    - durationcheck
+    - forbidigo
+    - importas
+    - nilerr
+    - predeclared
+    - thelper
+    - tparallel
+    - promlinter
+    - bodyclose
+    - godot
+    - funlen
+    - gocritic
+    - prealloc
+    - stylecheck
+    - unparam
+issues:
+  exclude-rules:
+    - path: (_test\.go|tests|.docker)
+      linters:
+        - bodyclose
+        - dupl
+        - funlen
+        - goerr113
+        - noctx
